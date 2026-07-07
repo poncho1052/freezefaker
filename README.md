@@ -20,9 +20,19 @@ zero dependencies) with single-player modes **and real-time online multiplayer**
 - **Watcher · Spot the Human** — *you* watch the crowd from above; find the hidden Fakers and accuse them.
 - **Play Online** — a room-code lobby where friends play together: one human Watcher vs. human Fakers hidden in the NPC crowd.
 
-## 👥 Play with Friends (Online Multiplayer)
+## 🎮 Play Now (no install)
 
-Multiplayer runs on a **zero-dependency Node server** (no `npm install`, just Node 18+).
+**→ https://silent-maple-107.higgsfield.gg/**
+
+Open the link and play — solo modes work immediately. For multiplayer, click
+**PLAY ONLINE → Create Room** and share the 4-letter code; friends open the same
+link, **PLAY ONLINE → Join**, enter the code. Nobody installs anything.
+
+(Hosted deploy details and how to update it: [`deploy/GAME.md`](deploy/GAME.md).)
+
+## 👥 Self-hosted Multiplayer (optional)
+
+Multiplayer also runs on a **zero-dependency Node server** (no `npm install`, just Node 18+).
 
 **Host — start the server:**
 
