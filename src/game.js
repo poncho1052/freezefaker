@@ -42,6 +42,11 @@ export class Game {
     this.input.onPress((k) => {
       if ((k === 'escape' || k === 'p') && this.state === 'paused') this.resume();
     });
+    // Touch routing: taps that land on HUD buttons never become world input.
+    this.input.hitTest = (x, y) => {
+      const h = this.state === 'online' && this.online ? this.online.hud : this.hud;
+      return !!(h && h.hit && h.hit(x, y));
+    };
     requestAnimationFrame(this._loop);
     if (typeof window !== 'undefined') window.__ff = this;
   }
@@ -355,8 +360,19 @@ export class Game {
     const p = this.player;
     if (p.eliminated) return;
     const inp = this.input;
+
+    // Touch taps on HUD buttons (actions / sync / pause).
+    if (inp.clicked) {
+      const h = this.hud.hit(inp.pointer.x, inp.pointer.y);
+      if (h) {
+        if (h.type === 'action') this._perform(h.id);
+        else if (h.type === 'sync') this._sync();
+        else if (h.type === 'pause') { this.pause(); return; }
+      }
+    }
+
     const ax = inp.axis();
-    const jogging = inp.down('shift') && ax.mag > 0;
+    const jogging = inp.jogging() && ax.mag > 0;
     p._jogging = jogging;
     const speed = jogging ? TUNING.faker.jog : TUNING.faker.walk;
 
@@ -445,6 +461,10 @@ export class Game {
   // ---------------- Watcher control (human) ----------------
   _watcherControl(dt) {
     const inp = this.input, ws = this.watch;
+    if (inp.clicked) {
+      const h = this.hud.hit(inp.pointer.x, inp.pointer.y);
+      if (h && h.type === 'pause') { this.pause(); return; }
+    }
     const wp = this.renderer.s2w(inp.pointer.x, inp.pointer.y);
     ws.reticle.x = wp.x; ws.reticle.y = wp.y;
     ws.hover = this._pickChar(wp.x, wp.y, TUNING.watch.pickRadius);
@@ -692,6 +712,7 @@ export class Game {
         next: `${t.roundWord} ${this.roundNum + 1}`,
       } : null,
       teamFakers: t.teamFakers, teamWatcher: t.teamWatcher, scoreWord: t.scoreWord,
+      joy: this.input.joy, canPause: this.input.hasTouch,
     };
     let s;
     if (this.role === 'watcher') {

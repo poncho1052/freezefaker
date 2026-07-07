@@ -4,41 +4,73 @@
 import { PALETTE, I18N } from './config.js';
 
 export class Hud {
+  // Tap-target lookup for touch play (rects recorded during draw, CSS px).
+  hit(x, y) {
+    if (!this._hits) return null;
+    for (const h of this._hits) {
+      if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) return h;
+    }
+    return null;
+  }
+
   draw(ctx, vw, vh, s) {
     const t = I18N[s.lang] || I18N.en;
-    const scale = s.hudScale || 1;
+    const mob = vw < 640;
+    const scale = (s.hudScale || 1) * (mob ? Math.max(0.8, (vw / 640) * 0.95) : 1);
+    this._hits = [];
+    this.mob = mob;
     ctx.save();
     ctx.textBaseline = 'alphabetic';
 
-    this._banner(ctx, vw, s, t, scale);
-    this._marks(ctx, s, t, scale);
-    if (s.wins) this._matchStrip(ctx, vw, s, t, scale);
-    if (s.score != null) this._score(ctx, s, t, scale);
+    this._banner(ctx, vw, s, t, scale, mob);
+    this._marks(ctx, s, t, scale, mob);
+    if (s.wins) this._matchStrip(ctx, vw, s, t, scale, mob);
+    if (s.score != null) this._score(ctx, s, t, scale, mob);
+    if (s.canPause) this._pauseBtn(ctx, vw, scale, mob);
 
     if (s.role === 'watcher') {
-      this._fakersLeft(ctx, vw, s, t, scale);
+      this._fakersLeft(ctx, vw, s, t, scale, mob);
       this._watchHint(ctx, vw, vh, s, t, scale);
     } else {
-      this._status(ctx, vw, s, t, scale);
+      this._status(ctx, vw, s, t, scale, mob);
       if (!s.spectating) {
         this._actionBar(ctx, vw, vh, s, t, scale);
-        this._sync(ctx, vh, s, t, scale);
+        this._sync(ctx, vh, s, t, scale, mob);
         this._penalty(ctx, vw, vh, s, t, scale);
       } else {
         this._spectate(ctx, vw, vh, s, t, scale);
       }
-      if (s.missions) this._missions(ctx, vw, s, t, scale);
+      if (s.missions) this._missions(ctx, vw, s, t, scale, mob);
     }
 
+    if (s.joy && s.joy.active) this._joystick(ctx, s.joy);
     if (s.popups && s.popups.length) this._popups(ctx, vw, vh, s, scale);
     if (s.interlude) this._interlude(ctx, vw, vh, s, t, scale);
 
     ctx.restore();
   }
 
+  _joystick(ctx, joy) {
+    ctx.strokeStyle = 'rgba(242,241,236,0.35)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 44, 0, 7); ctx.stroke();
+    const dx = joy.x - joy.ox, dy = joy.y - joy.oy;
+    const m = Math.hypot(dx, dy) || 1, r = Math.min(m, 44);
+    ctx.fillStyle = 'rgba(242,241,236,0.5)';
+    ctx.beginPath(); ctx.arc(joy.ox + (dx / m) * r, joy.oy + (dy / m) * r, 20, 0, 7); ctx.fill();
+  }
+
+  _pauseBtn(ctx, vw, scale, mob) {
+    const sz = 38 * scale, x = vw - sz - 10, y = mob ? this._bannerBottom + 56 * scale : 84 * scale;
+    this._panel(ctx, x, y, sz, sz, 8);
+    ctx.fillStyle = PALETTE.offwhite;
+    ctx.fillRect(x + sz * 0.32, y + sz * 0.28, sz * 0.12, sz * 0.44);
+    ctx.fillRect(x + sz * 0.56, y + sz * 0.28, sz * 0.12, sz * 0.44);
+    this._hits.push({ type: 'pause', x: x - 6, y: y - 6, w: sz + 12, h: sz + 12 });
+  }
+
   // FAKERS ● ●  —  ○ ○ WATCHER round pips beside the countdown box
-  _matchStrip(ctx, vw, s, t, scale) {
-    const y = 92 * scale + 36 * scale + 18 * scale;
+  _matchStrip(ctx, vw, s, t, scale, mob) {
+    const y = (this._countBottom || 128 * scale) + 16 * scale;
     ctx.font = `800 ${11 * scale}px system-ui`;
     const pip = (x, on, col) => {
       ctx.beginPath(); ctx.arc(x, y - 4 * scale, 4.5 * scale, 0, 7);
@@ -54,15 +86,16 @@ export class Hud {
     ctx.fillText(s.teamWatcher, cx + 22 * scale + s.matchTarget * 14 * scale + 4 * scale, y);
   }
 
-  _score(ctx, s, t, scale) {
-    const w = 176 * scale, h = 34 * scale, x = 16 * scale, y = 82 * scale;
+  _score(ctx, s, t, scale, mob) {
+    const w = (mob ? 132 : 176) * scale, h = (mob ? 28 : 34) * scale, x = mob ? 10 : 16 * scale;
+    const y = mob ? this._bannerBottom + 58 * scale : 82 * scale;
     this._panel(ctx, x, y, w, h, 8);
     ctx.textAlign = 'left';
     ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${10 * scale}px system-ui`;
-    ctx.fillText(s.scoreWord.toUpperCase(), x + 14 * scale, y + 21 * scale);
+    ctx.fillText(s.scoreWord.toUpperCase(), x + 12 * scale, y + (mob ? 19 : 21) * scale);
     ctx.textAlign = 'right';
-    ctx.fillStyle = PALETTE.offwhite; ctx.font = `900 ${16 * scale}px "Arial Black", Arial`;
-    ctx.fillText(String(s.score), x + w - 14 * scale, y + 23 * scale);
+    ctx.fillStyle = PALETTE.offwhite; ctx.font = `900 ${(mob ? 13 : 16) * scale}px "Arial Black", Arial`;
+    ctx.fillText(String(s.score), x + w - 12 * scale, y + (mob ? 20 : 23) * scale);
   }
 
   _popups(ctx, vw, vh, s, scale) {
@@ -82,7 +115,7 @@ export class Hud {
   }
 
   _spectate(ctx, vw, vh, s, t, scale) {
-    const w = 420 * scale, h = 36 * scale, x = vw / 2 - w / 2, y = vh - h - 18 * scale;
+    const w = Math.min(420 * scale, vw - 16), h = 36 * scale, x = vw / 2 - w / 2, y = vh - h - 18 * scale;
     this._panel(ctx, x, y, w, h, 8, 'rgba(255,193,7,0.6)');
     ctx.textAlign = 'center';
     ctx.fillStyle = PALETTE.amber; ctx.font = `800 ${13 * scale}px system-ui`;
@@ -109,10 +142,22 @@ export class Hud {
     ctx.fillStyle = PALETTE.amber; rrect(ctx, x + 30 * scale, y + h - 24 * scale, bw * (1 - il.frac), 6 * scale, 3); ctx.fill();
   }
 
-  _fakersLeft(ctx, vw, s, t, scale) {
-    const w = 200 * scale, h = 58 * scale, x = vw - w - 16 * scale, y = 16 * scale;
+  _fakersLeft(ctx, vw, s, t, scale, mob) {
+    const w = (mob ? 132 : 200) * scale, h = (mob ? 44 : 58) * scale, x = vw - w - (mob ? 10 : 16 * scale);
+    const y = mob ? this._bannerBottom + 8 * scale : 16 * scale;
     this._panel(ctx, x, y, w, h);
     ctx.textAlign = 'left';
+    if (mob) {
+      ctx.fillStyle = PALETTE.red; ctx.font = `800 ${16 * scale}px system-ui`;
+      ctx.fillText(`${s.fakersAlive}/${s.fakersTotal}`, x + 12 * scale, y + 28 * scale);
+      for (let i = 0; i < s.fakersTotal; i++) {
+        const dx = x + w - 14 * scale - i * 13 * scale;
+        ctx.fillStyle = i < s.fakersAlive ? PALETTE.red : 'rgba(154,163,173,0.35)';
+        ctx.beginPath(); ctx.arc(dx, y + 18 * scale, 3 * scale, 0, 7); ctx.fill();
+        ctx.fillRect(dx - 2.5 * scale, y + 21 * scale, 5 * scale, 8 * scale);
+      }
+      return;
+    }
     ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${11 * scale}px system-ui`;
     ctx.fillText(t.fakersLeft.toUpperCase(), x + 14 * scale, y + 22 * scale);
     ctx.fillStyle = PALETTE.red; ctx.font = `800 ${24 * scale}px system-ui`;
@@ -130,7 +175,7 @@ export class Hud {
 
   _watchHint(ctx, vw, vh, s, t, scale) {
     const red = s.light.phase === 'red';
-    const w = 460 * scale, h = 40 * scale, x = vw / 2 - w / 2, y = vh - h - 18 * scale;
+    const w = Math.min(460 * scale, vw - 16), h = 40 * scale, x = vw / 2 - w / 2, y = vh - h - 18 * scale;
     ctx.fillStyle = red ? 'rgba(46,12,12,0.9)' : 'rgba(14,22,33,0.85)';
     rrect(ctx, x, y, w, h, 10); ctx.fill();
     ctx.strokeStyle = red ? PALETTE.red : 'rgba(154,163,173,0.28)'; ctx.lineWidth = 1.4;
@@ -144,8 +189,8 @@ export class Hud {
 
   _missions(ctx, vw, s, t, scale) {
     const rows = s.missions;
-    const w = 240 * scale, rowH = 26 * scale, h = 42 * scale + rows.length * rowH;
-    const x = 16 * scale, y = 124 * scale;
+    const w = Math.min(240 * scale, vw * 0.56), rowH = 26 * scale, h = 42 * scale + rows.length * rowH;
+    const x = this.mob ? 10 : 16 * scale, y = this.mob ? this._bannerBottom + 94 * scale : 124 * scale;
     this._panel(ctx, x, y, w, h);
     ctx.textAlign = 'left';
     ctx.fillStyle = PALETTE.amber; ctx.font = `800 ${11 * scale}px system-ui`;
@@ -189,15 +234,16 @@ export class Hud {
     ctx.stroke();
   }
 
-  _banner(ctx, vw, s, t, scale) {
+  _banner(ctx, vw, s, t, scale, mob) {
     const ph = s.light.phase;
     const isRed = ph === 'red', isWarn = ph === 'warning';
     const color = isRed ? PALETTE.red : isWarn ? PALETTE.amber : PALETTE.green;
     const title = isRed ? t.red : isWarn ? t.warn : t.green;
     const sub = isRed ? t.redSub : isWarn ? t.warnSub : t.greenSub;
 
-    const w = 420 * scale, h = 76 * scale;
-    const x = vw / 2 - w / 2, y = 16 * scale;
+    const w = Math.min(420 * scale, vw - (mob ? 16 : 32)), h = (mob ? 62 : 76) * scale;
+    const x = vw / 2 - w / 2, y = (mob ? 8 : 16) * scale;
+    this._bannerBottom = y + h;
     this._panel(ctx, x, y, w, h, 12, isRed ? PALETTE.red : isWarn ? 'rgba(255,193,7,0.7)' : null);
 
     // signal icon (pedestrian figure in a lamp)
@@ -218,50 +264,70 @@ export class Hud {
 
     ctx.textAlign = 'left';
     ctx.fillStyle = color;
-    ctx.font = `900 ${30 * scale}px "Arial Black", Arial, sans-serif`;
-    ctx.fillText(title, x + 66 * scale, y + 40 * scale);
+    ctx.font = `900 ${(mob ? 24 : 30) * scale}px "Arial Black", Arial, sans-serif`;
+    ctx.fillText(title, x + 60 * scale, y + (mob ? 34 : 40) * scale);
     ctx.fillStyle = PALETTE.offwhite;
     ctx.font = `600 ${12 * scale}px system-ui, sans-serif`;
-    ctx.fillText(sub, x + 66 * scale, y + 58 * scale);
+    ctx.fillText(sub, x + 60 * scale, y + (mob ? 50 : 58) * scale);
 
     // boxed phase countdown below the banner (board style)
-    const cw = 104 * scale, chh = 36 * scale, cy = y + h + 8 * scale;
+    const cw = 104 * scale, chh = (mob ? 30 : 36) * scale, cy = y + h + 8 * scale;
+    this._countBottom = cy + chh;
     this._panel(ctx, vw / 2 - cw / 2, cy, cw, chh, 8, isRed ? PALETTE.red : null);
     ctx.textAlign = 'center';
     ctx.fillStyle = color;
-    ctx.font = `900 ${22 * scale}px "Arial Black", Arial, sans-serif`;
-    ctx.fillText(fmtCount(s.light.timeLeft), vw / 2, cy + 26 * scale);
+    ctx.font = `900 ${(mob ? 18 : 22) * scale}px "Arial Black", Arial, sans-serif`;
+    ctx.fillText(fmtCount(s.light.timeLeft), vw / 2, cy + (mob ? 21 : 26) * scale);
 
-    // round timer chip to the right of the countdown
-    ctx.textAlign = 'left';
+    // round timer chip: inside the banner on mobile, beside the box on desktop
     ctx.fillStyle = 'rgba(242,241,236,0.75)';
     ctx.font = `700 ${12 * scale}px system-ui, sans-serif`;
-    ctx.fillText('⏱ ' + fmtTime(s.roundLeft), vw / 2 + cw / 2 + 12 * scale, cy + 23 * scale);
+    if (mob) {
+      ctx.textAlign = 'right';
+      ctx.fillText('⏱ ' + fmtTime(s.roundLeft), x + w - 12 * scale, y + 22 * scale);
+    } else {
+      ctx.textAlign = 'left';
+      ctx.fillText('⏱ ' + fmtTime(s.roundLeft), vw / 2 + cw / 2 + 12 * scale, cy + 23 * scale);
+    }
   }
 
-  _marks(ctx, s, t, scale) {
-    const w = 176 * scale, h = 58 * scale, x = 16 * scale, y = 16 * scale;
+  _marks(ctx, s, t, scale, mob) {
+    const w = (mob ? 132 : 176) * scale, h = (mob ? 44 : 58) * scale, x = mob ? 10 : 16 * scale;
+    const y = mob ? this._bannerBottom + 8 * scale : 16 * scale;
     this._panel(ctx, x, y, w, h);
     ctx.textAlign = 'left';
-    drawEye(ctx, x + 22 * scale, y + 22 * scale, 8 * scale, PALETTE.offwhite);
-    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${11 * scale}px system-ui`;
-    ctx.fillText(t.marks.toUpperCase(), x + 38 * scale, y + 25 * scale);
+    drawEye(ctx, x + 20 * scale, y + (mob ? 22 : 22) * scale, 8 * scale, PALETTE.offwhite);
+    if (!mob) {
+      ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${11 * scale}px system-ui`;
+      ctx.fillText(t.marks.toUpperCase(), x + 38 * scale, y + 25 * scale);
+    }
     // dots
-    const dotY = y + 42 * scale;
+    const dotY = y + (mob ? 22 : 42) * scale, dot0 = x + (mob ? 40 : 20) * scale, gap = (mob ? 15 : 26) * scale;
     for (let i = 0; i < s.maxMarks; i++) {
-      const dx = x + 20 * scale + i * 26 * scale;
-      ctx.beginPath(); ctx.arc(dx, dotY, 7 * scale, 0, 7);
+      const dx = dot0 + i * gap;
+      ctx.beginPath(); ctx.arc(dx, dotY, (mob ? 5 : 7) * scale, 0, 7);
       ctx.fillStyle = i < s.marks ? PALETTE.red : 'rgba(154,163,173,0.35)';
       ctx.fill();
     }
-    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${12 * scale}px system-ui`;
-    ctx.fillText('/ ' + s.maxMarks, x + 20 * scale + s.maxMarks * 26 * scale, dotY + 4 * scale);
+    if (!mob) {
+      ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${12 * scale}px system-ui`;
+      ctx.fillText('/ ' + s.maxMarks, dot0 + s.maxMarks * gap, dotY + 4 * scale);
+    }
   }
 
-  _status(ctx, vw, s, t, scale) {
-    const w = 200 * scale, h = 58 * scale, x = vw - w - 16 * scale, y = 16 * scale;
+  _status(ctx, vw, s, t, scale, mob) {
+    const w = (mob ? 132 : 200) * scale, h = (mob ? 44 : 58) * scale, x = vw - w - (mob ? 10 : 16 * scale);
+    const y = mob ? this._bannerBottom + 8 * scale : 16 * scale;
     this._panel(ctx, x, y, w, h);
     ctx.textAlign = 'left';
+    if (mob) {
+      ctx.fillStyle = PALETTE.green; ctx.font = `800 ${15 * scale}px system-ui`;
+      ctx.fillText(fmtTime(s.survival), x + 12 * scale, y + 20 * scale);
+      const bw = w - 24 * scale, bx = x + 12 * scale, by = y + 28 * scale;
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, bx, by, bw, 8 * scale, 4); ctx.fill();
+      ctx.fillStyle = PALETTE.green; rrect(ctx, bx, by, bw * clamp01(s.progress), 8 * scale, 4); ctx.fill();
+      return;
+    }
     ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${11 * scale}px system-ui`;
     ctx.fillText(t.survival.toUpperCase(), x + 14 * scale, y + 22 * scale);
     ctx.fillStyle = PALETTE.green; ctx.font = `800 ${20 * scale}px system-ui`;
@@ -278,19 +344,24 @@ export class Hud {
 
   _actionBar(ctx, vw, vh, s, t, scale) {
     const n = s.actions.length;
-    const cell = 62 * scale, gap = 8 * scale;
-    const w = n * cell + (n - 1) * gap + 24 * scale;
-    const h = 78 * scale;
-    const x = vw / 2 - w / 2, y = vh - h - 16 * scale;
+    const mob = this.mob;
+    const gap = (mob ? 5 : 8) * scale;
+    const cell = mob ? Math.min(56, (vw - 20 - gap * (n - 1) - 16) / n) : 62 * scale;
+    const w = n * cell + (n - 1) * gap + (mob ? 16 : 24 * scale);
+    const h = cell + (mob ? 24 : 16 * scale) + 6;
+    const x = vw / 2 - w / 2, y = vh - h - (mob ? 10 : 16 * scale);
     this._panel(ctx, x, y, w, h);
     ctx.textAlign = 'center';
-    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${10 * scale}px system-ui`;
-    ctx.fillText('DISGUISE / MIMIC', vw / 2, y + 15 * scale);
+    if (!mob) {
+      ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${10 * scale}px system-ui`;
+      ctx.fillText('DISGUISE / MIMIC', vw / 2, y + 15 * scale);
+    }
 
     for (let i = 0; i < n; i++) {
       const a = s.actions[i];
-      const cx = x + 12 * scale + i * (cell + gap);
-      const cy = y + 22 * scale;
+      const cx = x + (this.mob ? 8 : 12 * scale) + i * (cell + gap);
+      const cy = y + (this.mob ? 8 : 22 * scale);
+      this._hits.push({ type: 'action', id: a.id, x: cx - 2, y: cy - 2, w: cell + 4, h: cell + 4 });
       const active = s.activeActionId === a.id;
       const valid = a.valid;
       ctx.fillStyle = active ? 'rgba(229,57,53,0.35)' : valid ? 'rgba(46,204,113,0.16)' : 'rgba(0,0,0,0.3)';
@@ -304,10 +375,12 @@ export class Hud {
       ctx.fillStyle = valid ? PALETTE.offwhite : PALETTE.gray;
       ctx.font = `600 ${9.5 * scale}px system-ui`;
       ctx.fillText(s.lang === 'ja' ? a.labelJA : a.labelEN, cx + cell / 2, cy + cell - 8 * scale);
-      // key badge
-      ctx.fillStyle = 'rgba(0,0,0,0.5)'; rrect(ctx, cx + cell - 16 * scale, cy + 3 * scale, 13 * scale, 13 * scale, 3); ctx.fill();
-      ctx.fillStyle = PALETTE.offwhite; ctx.font = `700 ${9 * scale}px system-ui`;
-      ctx.fillText(a.key, cx + cell - 9.5 * scale, cy + 13 * scale);
+      // key badge (pointless on touch)
+      if (!this.mob) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; rrect(ctx, cx + cell - 16 * scale, cy + 3 * scale, 13 * scale, 13 * scale, 3); ctx.fill();
+        ctx.fillStyle = PALETTE.offwhite; ctx.font = `700 ${9 * scale}px system-ui`;
+        ctx.fillText(a.key, cx + cell - 9.5 * scale, cy + 13 * scale);
+      }
 
       // active pose progress
       if (active && s.actionProgress != null) {
@@ -316,9 +389,25 @@ export class Hud {
     }
   }
 
-  _sync(ctx, vh, s, t, scale) {
-    const w = 132 * scale, h = 78 * scale, x = 16 * scale, y = vh - h - 16 * scale;
-    this._panel(ctx, x, y, w, h);
+  _sync(ctx, vh, s, t, scale, mob) {
+    const w = (mob ? 64 : 132) * scale, h = (mob ? 64 : 78) * scale;
+    const x = mob ? 10 : 16 * scale;
+    const y = mob ? vh - h - 128 * scale : vh - h - 16 * scale;
+    this._panel(ctx, x, y, w, h, mob ? 14 : 10, mob && s.syncReady ? PALETTE.green : null);
+    this._hits.push({ type: 'sync', x: x - 6, y: y - 6, w: w + 12, h: h + 12 });
+    if (mob) {
+      const rx = x + w / 2, ry = y + h / 2, rr2 = 20 * scale;
+      ctx.lineWidth = 4.5 * scale;
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath(); ctx.arc(rx, ry, rr2, 0, 7); ctx.stroke();
+      ctx.strokeStyle = s.syncReady ? PALETTE.green : PALETTE.amber;
+      ctx.beginPath(); ctx.arc(rx, ry, rr2, -Math.PI / 2, -Math.PI / 2 + s.syncCooldownFrac * Math.PI * 2); ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = s.syncReady ? PALETTE.green : PALETTE.amber;
+      ctx.font = `800 ${14 * scale}px system-ui`;
+      ctx.fillText(s.syncReady ? 'SYNC' : Math.ceil(s.syncSecondsLeft) + 's', rx, ry + 5 * scale);
+      return;
+    }
     ctx.textAlign = 'left';
     ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${11 * scale}px system-ui`;
     ctx.fillText(t.sync.toUpperCase(), x + 14 * scale, y + 18 * scale);

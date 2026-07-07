@@ -163,11 +163,18 @@ export class OnlineMatch {
 
   _controlFaker(dt, raw) {
     const p = this.you;
-    if (p.eliminated) { this._render; }
     const inp = this.input;
+    // Touch taps on HUD buttons.
+    if (inp.clicked && !p.eliminated) {
+      const h = this.hud.hit(inp.pointer.x, inp.pointer.y);
+      if (h) {
+        if (h.type === 'action') this._perform(h.id);
+        else if (h.type === 'sync') this._sync();
+      }
+    }
     const ax = inp.axis();
     const onRed = this.light.phase === 'red';
-    const jogging = inp.down('shift') && ax.mag > 0;
+    const jogging = inp.jogging() && ax.mag > 0;
     const speed = jogging ? TUNING.faker.jog : TUNING.faker.walk;
     p.lastFacing = p.facing;
     p._syncedThisFrame = false;
@@ -283,6 +290,7 @@ export class OnlineMatch {
       lang: this.settings.lang, hudScale: this.settings.hudScale, time: this.time, colorblind: this.settings.colorblind,
       light: { phase: this.light.phase, timeLeft: this.light.timeLeft, phaseDuration: this.light.phaseDuration },
       roundLeft: this.roundLeft, role: this.role,
+      joy: this.input.joy, popups: null,
     };
     let s;
     if (this.role === 'watcher') {

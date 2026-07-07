@@ -263,3 +263,36 @@ input[type="range"] { padding: 0; width: 180px; }
 .btn:focus-visible, .seg button:focus-visible, select:focus-visible, .toggle:focus-visible {
   outline: 2px solid var(--amber); outline-offset: 2px;
 }
+
+/* ---------- Phones & small screens ----------
+   Menus become top-aligned scrollable columns with large tap targets. */
+@media (max-width: 700px), (max-height: 520px) {
+  .screen {
+    justify-content: flex-start;
+    padding: max(14px, env(safe-area-inset-top)) 16px calc(30px + env(safe-area-inset-bottom));
+    gap: 14px;
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+  .logosvg { width: min(340px, 78vw); margin-top: 6px; }
+  .logosvg.small { width: min(170px, 40vw); }
+  .subtitle { font-size: 13px; margin: 0; }
+  .menu { width: 100%; max-width: 420px; gap: 10px; }
+  .btn { min-height: 48px; font-size: 15px; }
+  .actions { width: 100%; max-width: 420px; }
+  .actions .btn { min-width: 0; flex: 1 1 45%; }
+  .panel { width: 100%; max-width: 480px; padding: 16px 14px; }
+  .howto-grid { grid-template-columns: 1fr; gap: 10px; }
+  .mode-grid { width: 100%; max-width: 440px; gap: 10px; }
+  .mode-card { padding: 14px 16px; }
+  .mode-card .mc-ic { font-size: 24px; margin-bottom: 4px; }
+  .mode-card p { font-size: 12px; }
+  .mode-h { font-size: 16px; margin: 0; }
+  .online-wrap { width: 100%; max-width: 440px; gap: 10px; }
+  .online-card p { min-height: 0; }
+  .tf { width: 100%; min-height: 46px; }
+  .lobby-panel { min-width: 0; }
+  .credits { display: none; }
+  .verdict { font-size: clamp(26px, 9vw, 44px); }
+  .row { flex-wrap: wrap; gap: 8px; }
+}
