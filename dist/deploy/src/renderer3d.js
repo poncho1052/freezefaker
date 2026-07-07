@@ -205,7 +205,12 @@ export class Renderer3D {
     apron.rotation.x = -Math.PI / 2; apron.position.set(W.w / 2, -0.5, W.h / 2);
     this.scene.add(apron);
 
-    // ---- distant skyline (night city backdrop) ----
+    // ---- distant skyline (night city backdrop) with neon signs ----
+    const NEON = [
+      { t: 'カラオケ 747', bg: '#7c1f3f', fg: '#ffd7e0' }, { t: 'BOOKS', bg: '#1c4a43', fg: '#a9f5d0' },
+      { t: 'ホテル月光', bg: '#203a66', fg: '#bcd8ff' }, { t: '駅前通り', bg: '#6e4a17', fg: '#ffe9b8' },
+      { t: 'ラーメン', bg: '#7a2222', fg: '#ffd2a8' }, { t: 'CAMERA', bg: '#274a63', fg: '#c4ecff' },
+    ];
     for (let i = 0; i < 14; i++) {
       const bw = 130 + (i * 97) % 160, bh = 260 + (i * 173) % 420;
       const bx = -240 + i * (W.w + 480) / 14;
@@ -215,10 +220,48 @@ export class Renderer3D {
       const win = new THREE.Mesh(this._geo('box', bw * 0.92, bh * 0.9, 2), this._winMat(i));
       win.position.set(bx, bh / 2 + 8, -144);
       this.scene.add(win);
+      if (i % 2 === 0) {
+        const n = NEON[(i / 2) % NEON.length];
+        const sw = Math.min(bw * 0.9, 150);
+        const sign = new THREE.Mesh(this._geo('box', sw, 34, 3), this._label(n.t, sw, 34, { bg: n.bg, fg: n.fg, fs: 0.5 }));
+        sign.position.set(bx, bh - 40 - (i * 53) % 120, -142);
+        this.scene.add(sign);
+      }
+    }
+
+    // ---- street trees flanking the plaza (visual only, off the walk area) ----
+    for (const [tx, tz] of [[70, 330], [W.w - 70, 330], [70, 700], [W.w - 70, 700], [430, 236], [W.w - 430, 236]]) {
+      this._tree(tx, tz);
     }
 
     // ---- props ----
     for (const p of W.props) this._buildProp(p);
+
+    // ---- goal beacon: a soft green light pillar at the gate ----
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(30, 44, 240, 20, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x2ECC71, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false })
+    );
+    beam.position.set(W.goal.x, 120, W.goal.y + 12);
+    const core = new THREE.Mesh(
+      new THREE.CylinderGeometry(7, 10, 250, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x7ee2a1, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false })
+    );
+    core.position.copy(beam.position);
+    this._beacon = beam; this._beaconCore = core;
+    this.scene.add(beam, core);
+
+    // ---- flowing chevrons along the tactile strip toward the gate ----
+    this._chevrons = [];
+    const chevGeo = new THREE.ConeGeometry(10, 18, 4);
+    for (let i = 0; i < 8; i++) {
+      const cone = new THREE.Mesh(chevGeo, new THREE.MeshBasicMaterial({ color: 0x2ECC71, transparent: true, opacity: 0.75 }));
+      cone.rotation.x = -Math.PI / 2;      // point toward -z (the gate)
+      cone.rotation.y = Math.PI / 4;
+      cone.position.set(W.w / 2, 4, 0);
+      this.scene.add(cone);
+      this._chevrons.push(cone);
+    }
   }
 
   _winMat(seed) {
@@ -257,18 +300,21 @@ export class Renderer3D {
     const S = this.scene;
     const cx = p.x + (p.w || 0) / 2, cz = p.y + (p.h || 0) / 2;
     if (p.type === 'station') {
-      // two wings + header over the gate opening
+      // white station facade with a dark title band, like the key visual
       const wingW = (p.w - 180) / 2, hgt = 190;
-      const l = this._box(wingW, hgt, p.h, '#242B36'); l.position.set(p.x + wingW / 2, hgt / 2, cz); S.add(l);
-      const r = this._box(wingW, hgt, p.h, '#242B36'); r.position.set(p.x + p.w - wingW / 2, hgt / 2, cz); S.add(r);
-      const head = this._box(200, 70, p.h, '#2c3542'); head.position.set(cx, hgt - 35, cz); S.add(head);
-      // glowing gate mouth + sign
-      const mouth = new THREE.Mesh(this._geo('box', 176, 118, 6), new THREE.MeshBasicMaterial({ color: 0x2a3b4d }));
-      mouth.position.set(cx, 59, p.y + p.h + 2); S.add(mouth);
-      const sign = new THREE.Mesh(this._geo('box', 176, 34, 4), this._label('▲ GATE 中央駅', 176, 34, { bg: '#0e1621', fg: '#7ee2a1', border: '#2ECC71', fs: 0.5 }));
-      sign.position.set(cx, 132, p.y + p.h + 4); S.add(sign);
-      const clock = new THREE.Mesh(this._geo('cyl', 12, 12, 4, 20), this._mat('#F2F1EC'));
-      clock.rotation.x = Math.PI / 2; clock.position.set(cx, 172, p.y + p.h + 3); S.add(clock);
+      const l = this._box(wingW, hgt, p.h, '#d6d3c9'); l.position.set(p.x + wingW / 2, hgt / 2, cz); S.add(l);
+      const r = this._box(wingW, hgt, p.h, '#d6d3c9'); r.position.set(p.x + p.w - wingW / 2, hgt / 2, cz); S.add(r);
+      const head = this._box(220, 70, p.h, '#c9c6bc'); head.position.set(cx, hgt - 35, cz); S.add(head);
+      const band = new THREE.Mesh(this._geo('box', p.w, 44, 4), this._label('中央駅  CHUO STATION', p.w, 44, { bg: '#242B36', fg: '#F2F1EC', fs: 0.5 }));
+      band.position.set(cx, 164, p.y + p.h + 3); S.add(band);
+      // glowing gate mouth + green GATE sign
+      const mouth = new THREE.Mesh(this._geo('box', 176, 112, 6), new THREE.MeshBasicMaterial({ color: 0x33455a }));
+      mouth.position.set(cx, 56, p.y + p.h + 2); S.add(mouth);
+      const sign = new THREE.Mesh(this._geo('box', 176, 32, 4), this._label('▲ GATE', 176, 32, { bg: '#0e1621', fg: '#7ee2a1', border: '#2ECC71', fs: 0.55 }));
+      sign.position.set(cx, 126, p.y + p.h + 4); S.add(sign);
+      const clock = new THREE.Mesh(this._geo('cyl', 12, 12, 4, 20), this._mat('#2b323d'));
+      clock.rotation.x = Math.PI / 2; clock.position.set(cx, 208, p.y + p.h - 20); S.add(clock);
+      this._pool(cx, p.y + p.h + 40, 120, '#9fd4b4', 0.16);
     } else if (p.type === 'cafe' || p.type === 'store') {
       const hgt = 150;
       const b = this._box(p.w, hgt, p.h, p.type === 'cafe' ? '#3d4653' : '#33425a');
@@ -281,8 +327,9 @@ export class Renderer3D {
         this._label(p.label || '', p.w * 0.8, 30, { bg: p.type === 'cafe' ? '#241d12' : '#0f2b1d', fg: '#F2F1EC', fs: 0.52 })
       );
       sign.position.set(cx, 96, p.y + p.h + 3); S.add(sign);
-      const awn = this._box(p.w * 0.9, 5, 26, p.type === 'cafe' ? '#8a5a4a' : '#2ECC71');
+      const awn = this._box(p.w * 0.9, 5, 26, p.type === 'cafe' ? '#3e7d7d' : '#2ECC71');
       awn.position.set(cx, 70, p.y + p.h + 12); S.add(awn);
+      this._pool(cx, p.y + p.h + 42, 110, p.type === 'cafe' ? '#e8c78e' : '#a9dcb8', 0.18);
     } else if (p.type === 'signal') {
       const pole = new THREE.Mesh(this._geo('cyl', 3.4, 3.8, 120, 10), this._mat('#39404a'));
       pole.position.set(p.x, 60, p.y); S.add(pole);
@@ -298,6 +345,7 @@ export class Renderer3D {
       b.position.set(cx, 31, p.y + 12); S.add(b);
       const face = new THREE.Mesh(this._geo('box', p.w * 0.8, 40, 3), this._vendingFace());
       face.position.set(cx, 36, p.y + 26); S.add(face);
+      this._pool(cx, p.y + 52, 66, '#ffe2b8', 0.16);
     } else if (p.type === 'bench') {
       const seat = this._box(p.w, 5, 26, '#6e5844'); seat.position.set(cx, 16, cz); S.add(seat);
       const back = this._box(p.w, 22, 4, '#7a634c'); back.position.set(cx, 30, cz - 12); S.add(back);
@@ -317,6 +365,13 @@ export class Renderer3D {
     } else if (p.type === 'planter') {
       const base = this._box(p.w, 14, p.h, '#8d8a80'); base.position.set(cx, 7, cz); S.add(base);
       const hedge = this._box(p.w - 6, 16, p.h - 6, '#4b6b46'); hedge.position.set(cx, 24, cz); S.add(hedge);
+      // flower dots
+      const cols = ['#e57f8c', '#ffd166', '#f2f1ec'];
+      for (let i = 0; i < 5; i++) {
+        const f = this._box(4, 4, 4, cols[i % 3]);
+        f.position.set(p.x + 8 + ((i * 37) % Math.max(8, p.w - 16)), 33, p.y + 6 + ((i * 23) % Math.max(6, p.h - 12)));
+        S.add(f);
+      }
     } else if (p.type === 'busstop') {
       const pole = new THREE.Mesh(this._geo('cyl', 3, 3, 74, 8), this._mat('#39404a'));
       pole.position.set(cx, 37, cz); S.add(pole);
@@ -324,6 +379,34 @@ export class Renderer3D {
       disc.position.set(cx, 82, cz); S.add(disc);
     }
     // skyline / crosswalk / gate handled elsewhere
+  }
+
+  // Warm light pool decal on the pavement (storefront glow).
+  _pool(x, z, r, color, alpha) {
+    const key = color + alpha;
+    if (!this._poolMats) this._poolMats = new Map();
+    if (!this._poolMats.has(key)) {
+      const c = document.createElement('canvas'); c.width = c.height = 128;
+      const g = c.getContext('2d');
+      const [cr, cg, cb] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
+      const grad = g.createRadialGradient(64, 64, 6, 64, 64, 64);
+      grad.addColorStop(0, `rgba(${cr},${cg},${cb},1)`);
+      grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+      g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+      this._poolMats.set(key, new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: alpha, depthWrite: false }));
+    }
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(r * 2, r * 2), this._poolMats.get(key));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, 0.8, z);
+    this.scene.add(m);
+  }
+
+  _tree(x, z) {
+    const trunk = new THREE.Mesh(this._geo('cyl', 4.5, 6, 34, 8), this._mat('#5a4634'));
+    trunk.position.set(x, 17, z); this.scene.add(trunk);
+    const g1 = this._box(46, 34, 46, '#4e7247'); g1.position.set(x, 52, z); g1.rotation.y = 0.5; this.scene.add(g1);
+    const g2 = this._box(32, 26, 32, '#5d8352'); g2.position.set(x + 6, 74, z - 4); g2.rotation.y = 1.1; this.scene.add(g2);
   }
 
   _vendingFace() {
@@ -448,6 +531,26 @@ export class Renderer3D {
     const mood = ph === 'red' ? 0xd7c3c3 : ph === 'warning' ? 0xd8cdb4 : 0xbfc9d4;
     this.hemi.color.setHex(mood);
 
+    // goal beacon pulse + flowing path chevrons (faker objective readability)
+    const showGoal = !!scene.goalMarker;
+    const pulse = 0.5 + 0.5 * Math.sin(scene.time * 2.4);
+    this._beacon.visible = this._beaconCore.visible = showGoal;
+    if (showGoal) {
+      this._beacon.material.opacity = 0.09 + pulse * 0.08;
+      this._beaconCore.material.opacity = 0.3 + pulse * 0.18;
+      this._beacon.rotation.y = scene.time * 0.4;
+    }
+    const path0 = this.world.h - 120, path1 = this.world.goal.y + 60, span = path0 - path1;
+    for (let i = 0; i < this._chevrons.length; i++) {
+      const cv = this._chevrons[i];
+      cv.visible = showGoal;
+      if (!showGoal) continue;
+      const u = ((scene.time * 90 + i * (span / this._chevrons.length)) % span);
+      cv.position.z = path0 - u;
+      const edge = Math.min(u / 90, (span - u) / 90, 1);
+      cv.material.opacity = 0.15 + 0.6 * Math.max(0, edge);
+    }
+
     // characters
     const seen = new Set();
     for (const c of scene.chars) {
@@ -501,6 +604,29 @@ export class Renderer3D {
       }
 
       if (scene.reveal && (c.kind === 'faker' || c.kind === 'player' || c.revealFaker)) this._revealMark(ctx, c, scene, false);
+    }
+
+    // GOAL marker pill: floats over the gate, clamps to the screen edge when
+    // the gate is out of view so you always know which way to run.
+    if (scene.goalMarker) {
+      const gm = scene.goalMarker;
+      const p = this._project(gm.x, 170, gm.y);
+      let gx = p.x, gy = p.y, offscreen = !p.ok;
+      if (!offscreen && (gx < 40 || gx > this.vw - 40 || gy < 30 || gy > this.vh - 120)) offscreen = true;
+      gx = Math.min(Math.max(gx, 76), this.vw - 76);
+      // keep clear of the light banner + countdown box at top-center
+      const minY = (gx > this.vw / 2 - 260 && gx < this.vw / 2 + 260) ? 168 : 46;
+      gy = Math.min(Math.max(gy, minY), this.vh - 130);
+      ctx.font = '800 14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      const wlab = ctx.measureText(gm.label).width + 26;
+      const pulse = 0.75 + 0.25 * Math.sin(scene.time * 3);
+      ctx.globalAlpha = offscreen ? 0.95 : pulse;
+      ctx.fillStyle = 'rgba(10,26,18,0.88)';
+      rr(ctx, gx - wlab / 2, gy - 17, wlab, 24, 8); ctx.fill();
+      ctx.strokeStyle = PALETTE.green; ctx.lineWidth = 1.6;
+      rr(ctx, gx - wlab / 2, gy - 17, wlab, 24, 8); ctx.stroke();
+      ctx.fillStyle = '#7ee2a1'; ctx.fillText(gm.label, gx, gy);
+      ctx.globalAlpha = 1;
     }
 
     // watcher-mode UI

@@ -171,6 +171,7 @@ export const I18N = {
     faceCrowd: 'Face where the crowd faces',
     penaltyT: 'YOU LOOK HUMAN', penaltySub: 'Match the crowd’s stance',
     bSpotted: 'SPOTTED!', bClose: 'CLOSE!', bCaught: 'CAUGHT', bGotcha: 'GOTCHA!', bSafe: 'SURVIVED', bMiss: 'MISFIRE',
+    bGoal: '▲ REACH THE GATE', bMission: 'DO YOUR TASKS, THEN THE GATE', goalWord: 'GOAL',
     // online
     online: 'Play Online', onlineTitle: 'Play with Friends',
     yourName: 'Your name', createRoom: 'Create Room', roomCodePh: 'Room code', joinRoom: 'Join',
@@ -233,6 +234,7 @@ export const I18N = {
     faceCrowd: '群衆と同じ向きを向け',
     penaltyT: '人間っぽい', penaltySub: '群衆と同じ姿勢に',
     bSpotted: '見つかった！', bClose: 'あぶない！', bCaught: '御用', bGotcha: '確保！', bSafe: '逃げ切った', bMiss: '誤指摘',
+    bGoal: '▲ 改札にたどり着け！', bMission: 'ミッションをこなして改札へ', goalWord: 'ゴール',
     // online
     online: 'オンライン対戦', onlineTitle: '友達と遊ぶ',
     yourName: '名前', createRoom: 'ルームを作る', roomCodePh: 'ルームコード', joinRoom: '参加',

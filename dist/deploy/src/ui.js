@@ -1,21 +1,76 @@
 // DOM UI: title, how-to, settings, pause, and result screens + the logo.
 import { I18N } from './config.js';
 
-const EYE_SVG = `<svg class="eye" viewBox="0 0 64 30" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <path d="M4 15 Q32 -6 60 15 Q32 36 4 15Z" fill="none" stroke="#F2F1EC" stroke-width="3"/>
-  <circle cx="32" cy="15" r="6" fill="#F2F1EC"/><circle cx="32" cy="15" r="3" fill="#E53935"/>
-  <g stroke="#F2F1EC" stroke-width="2" fill="none">
-    <path d="M6 4 L2 4 L2 8"/><path d="M58 4 L62 4 L62 8"/>
-    <path d="M6 26 L2 26 L2 22"/><path d="M58 26 L62 26 L62 22"/>
-  </g></svg>`;
+// Brand logo per the design board: watcher eye + focus brackets, stencil-cut
+// FREEZE, glitch-sliced red FAKER with a signal-person chip, bracketed tagline.
+function logoSVG(small) {
+  const uid = small ? 's' : 'l';
+  return `<svg class="logosvg ${small ? 'small' : ''}" viewBox="0 0 640 ${small ? 300 : 470}" role="img" aria-label="FREEZE FAKER — Don't Act Human.">
+  <defs>
+    <mask id="cut-${uid}">
+      <rect x="0" y="0" width="640" height="470" fill="#fff"/>
+      <g fill="#000" transform="rotate(-10 320 160)">
+        <rect x="118" y="118" width="404" height="5"/>
+        <rect x="60" y="166" width="250" height="4"/>
+        <rect x="360" y="176" width="220" height="4"/>
+      </g>
+    </mask>
+    <text id="fk-${uid}" x="320" y="330" text-anchor="middle" textLength="548" lengthAdjust="spacingAndGlyphs"
+      font-family="'Arial Black','Arial Bold',sans-serif" font-weight="900"
+      font-size="128">FAKER</text>
+    <clipPath id="b1-${uid}"><rect x="0" y="222" width="640" height="42"/></clipPath>
+    <clipPath id="b2-${uid}"><rect x="0" y="264" width="640" height="34"/></clipPath>
+    <clipPath id="b3-${uid}"><rect x="0" y="298" width="640" height="44"/></clipPath>
+  </defs>
+
+  ${small ? '' : `
+  <!-- watcher eye + focus brackets -->
+  <g transform="translate(320 34)">
+    <path d="M-34 0 Q0 -25 34 0 Q0 25 -34 0Z" fill="none" stroke="#F2F1EC" stroke-width="4"/>
+    <circle r="8.5" fill="#F2F1EC"/><circle r="4.5" fill="#E53935"/>
+  </g>
+  <g stroke="#9AA3AD" stroke-width="4" fill="none" opacity="0.85">
+    <path d="M56 22 L56 6 L84 6"/><path d="M584 22 L584 6 L556 6"/>
+    <path d="M56 400 L56 416 L84 416"/><path d="M584 400 L584 416 L556 416"/>
+  </g>`}
+
+  <!-- FREEZE: stencil-cut offwhite -->
+  <g mask="url(#cut-${uid})">
+    <text x="320" y="196" text-anchor="middle" textLength="548" lengthAdjust="spacingAndGlyphs"
+      font-family="'Arial Black','Arial Bold',sans-serif" font-weight="900"
+      font-size="126" fill="#F2F1EC">FREEZE</text>
+  </g>
+  <!-- signal chip hanging on the last E -->
+  <g transform="translate(586 118)">
+    <rect x="-17" y="-24" width="34" height="52" rx="7" fill="#141c28" stroke="#3a4350" stroke-width="2"/>
+    <circle cx="0" cy="-9" r="5.4" fill="#E53935"/>
+    <path d="M-5.5 12 L0 -1.5 L5.5 12 Z M-1.8 12 L-1.8 2 L1.8 2 L1.8 12 Z" fill="#E53935"/>
+  </g>
+
+  <!-- FAKER: red glitch bands (subtle slice misregistration) -->
+  <use href="#fk-${uid}" fill="#0E1621" transform="translate(4 4)" opacity="0.6"/>
+  <g class="gband gband1" clip-path="url(#b1-${uid})"><use href="#fk-${uid}" fill="#E53935" transform="translate(-2.5 0)"/></g>
+  <g class="gband gband2" clip-path="url(#b2-${uid})"><use href="#fk-${uid}" fill="#ef4640" transform="translate(4 0)"/></g>
+  <g class="gband gband3" clip-path="url(#b3-${uid})"><use href="#fk-${uid}" fill="#d23430" transform="translate(-1.5 0)"/></g>
+  <g fill="#E53935">
+    <rect x="52" y="256" width="26" height="8"/>
+    <rect x="562" y="288" width="34" height="7"/>
+  </g>
+
+  ${small ? '' : `
+  <!-- tagline -->
+  <g>
+    <rect x="76" y="408" width="42" height="3" fill="#5a636e"/>
+    <text x="320" y="420" text-anchor="middle" font-family="system-ui,sans-serif" font-weight="800" font-size="24" letter-spacing="6">
+      <tspan fill="#F2F1EC">DON'T </tspan><tspan fill="#E53935">ACT</tspan><tspan fill="#F2F1EC"> HUMAN.</tspan>
+    </text>
+    <rect x="522" y="408" width="42" height="3" fill="#5a636e"/>
+  </g>`}
+</svg>`;
+}
 
 function logoHTML(small = false) {
-  return `<div class="logo ${small ? 'small' : ''}">
-    ${small ? '' : EYE_SVG}
-    <span class="freeze">FREEZE</span>
-    <span class="faker glitch">FAKER</span>
-    <div class="tagline">DON'T <b>ACT</b> HUMAN.</div>
-  </div>`;
+  return `<div class="logo ${small ? 'small' : ''}">${logoSVG(small)}</div>`;
 }
 
 export class Ui {
@@ -82,7 +137,7 @@ export class Ui {
   _modeScreen() {
     const el = div('screen');
     el.innerHTML = `
-      <div class="logo small">${''}<span class="freeze">FREEZE</span><span class="faker glitch">FAKER</span></div>
+      ${logoHTML(true)}
       <h2 class="mode-h" data-i="chooseMode" style="letter-spacing:.14em;text-transform:uppercase;z-index:1"></h2>
       <div class="mode-grid">
         <button class="mode-card" data-mode="classic">
@@ -104,7 +159,7 @@ export class Ui {
   _onlineScreen() {
     const el = div('screen');
     el.innerHTML = `
-      <div class="logo small"><span class="freeze">FREEZE</span><span class="faker glitch">FAKER</span></div>
+      ${logoHTML(true)}
       <h2 class="mode-h" data-i="onlineTitle" style="letter-spacing:.12em;text-transform:uppercase;z-index:1"></h2>
       <div class="online-wrap">
         <input class="tf" data-ctl="name" maxlength="16" data-ph="yourName" />

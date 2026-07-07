@@ -54,6 +54,7 @@ export class OnlineMatch {
       this.chars.set(e.id, c);
       if (mine) this.you = c;
     }
+    if (this.role === 'faker') { this.bannerKey = 'bGoal'; this.bannerColor = PALETTE.green; this.bannerT = 3.2; }
   }
 
   _snap(m) {
@@ -267,7 +268,10 @@ export class OnlineMatch {
       reveal: !!this.ended, flash: this.flash, time: this.time, threat: 0,
       tells: { facing: t.tellFacing, iso: t.tellIso, pose: t.tellPose, move: t.tellMove, ok: t.tellOk },
       fxFlash: { col: this.fxFlashCol, a: this.fxFlashA },
-      banner: this.bannerT > 0 && this.bannerKey ? { text: t[this.bannerKey] || '', color: this.bannerColor, alpha: this.bannerT } : null,
+      banner: this.bannerT > 0 && this.bannerKey ? { text: t[this.bannerKey] || '', color: this.bannerColor, alpha: Math.min(1, this.bannerT) } : null,
+      goalMarker: (this.role === 'faker' && this.you && !this.you.eliminated && !this.ended)
+        ? { x: this.world.goal.x, y: this.world.goal.y, label: `▲ ${t.goalWord} ${Math.max(0, Math.round(Math.hypot(this.world.goal.x - this.you.x, this.world.goal.y - this.you.y) / 16))}m` }
+        : null,
     };
     this.renderer.render(scene);
     this._renderHud();

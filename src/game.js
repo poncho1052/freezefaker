@@ -109,6 +109,8 @@ export class Game {
     this.state = 'playing';
     this.ui.hideAll();
     this.announce(this.T().greenSub);
+    // Make the objective unmistakable from second zero.
+    if (this.role === 'faker') this._banner(this.mode === 'mission' ? 'bMission' : 'bGoal', PALETTE.green, 3.2);
   }
 
   pause() { if (this.state !== 'playing') return; this.state = 'paused'; this.ui.show('pause'); }
@@ -184,7 +186,7 @@ export class Game {
     }
   }
 
-  _banner(key, color) { this.bannerKey = key; this.bannerColor = color; this.bannerT = 1.1; }
+  _banner(key, color, t = 1.1) { this.bannerKey = key; this.bannerColor = color; this.bannerT = t; this._bannerMax = t; }
 
   // Slow-mo + camera punch + shake + flash on a dramatic accusation.
   _dramatize(target, correct, isPlayer) {
@@ -524,9 +526,20 @@ export class Game {
       tells: { facing: t.tellFacing, iso: t.tellIso, pose: t.tellPose, move: t.tellMove, ok: t.tellOk },
       threat: this.role === 'faker' ? this.threat : 0,
       fxFlash: { col: this.fxFlashCol, a: this.fxFlashA },
-      banner: this.bannerT > 0 && this.bannerKey ? { text: t[this.bannerKey] || '', color: this.bannerColor, alpha: this.bannerT } : null,
+      banner: this.bannerT > 0 && this.bannerKey ? { text: t[this.bannerKey] || '', color: this.bannerColor, alpha: Math.min(1, this.bannerT) } : null,
+      goalMarker: this._goalMarker(t),
     };
     this.renderer.render(scene);
+  }
+
+  // Floating GOAL marker (with live distance) for Faker modes; hidden while
+  // Blend Task objectives are unfinished so the checklist stays the focus.
+  _goalMarker(t) {
+    if (this.role !== 'faker' || !this.player || this.player.eliminated || this.ending) return null;
+    if (this.missions && !this._missionsDone()) return null;
+    const g = this.world.goal;
+    const meters = Math.max(0, Math.round(Math.hypot(g.x - this.player.x, g.y - this.player.y) / 16));
+    return { x: g.x, y: g.y, label: `▲ ${t.goalWord} ${meters}m` };
   }
 
   _renderHud() {

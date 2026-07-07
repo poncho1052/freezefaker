@@ -80,11 +80,23 @@ export class Hud {
     }
   }
 
-  _panel(ctx, x, y, w, h, r = 12) {
-    ctx.fillStyle = 'rgba(14,22,33,0.82)';
+  // Board style: dark navy card, thin stroke, corner tick brackets, optional glow.
+  _panel(ctx, x, y, w, h, r = 10, accent = null) {
+    ctx.fillStyle = 'rgba(13,20,30,0.86)';
     rrect(ctx, x, y, w, h, r); ctx.fill();
-    ctx.strokeStyle = 'rgba(154,163,173,0.28)'; ctx.lineWidth = 1;
+    if (accent) { ctx.save(); ctx.shadowColor = accent; ctx.shadowBlur = 14; }
+    ctx.strokeStyle = accent || 'rgba(154,163,173,0.3)'; ctx.lineWidth = accent ? 1.6 : 1;
     rrect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, r); ctx.stroke();
+    if (accent) ctx.restore();
+    // corner ticks
+    const tk = Math.min(9, h / 4), pad = 5;
+    ctx.strokeStyle = accent || 'rgba(154,163,173,0.55)'; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x + pad, y + pad + tk); ctx.lineTo(x + pad, y + pad); ctx.lineTo(x + pad + tk, y + pad);
+    ctx.moveTo(x + w - pad - tk, y + pad); ctx.lineTo(x + w - pad, y + pad); ctx.lineTo(x + w - pad, y + pad + tk);
+    ctx.moveTo(x + w - pad, y + h - pad - tk); ctx.lineTo(x + w - pad, y + h - pad); ctx.lineTo(x + w - pad - tk, y + h - pad);
+    ctx.moveTo(x + pad + tk, y + h - pad); ctx.lineTo(x + pad, y + h - pad); ctx.lineTo(x + pad, y + h - pad - tk);
+    ctx.stroke();
   }
 
   _banner(ctx, vw, s, t, scale) {
@@ -96,7 +108,7 @@ export class Hud {
 
     const w = 420 * scale, h = 76 * scale;
     const x = vw / 2 - w / 2, y = 16 * scale;
-    this._panel(ctx, x, y, w, h, 14);
+    this._panel(ctx, x, y, w, h, 12, isRed ? PALETTE.red : isWarn ? 'rgba(255,193,7,0.7)' : null);
 
     // signal icon (pedestrian figure in a lamp)
     const iconX = x + 34 * scale, iconY = y + h / 2;
@@ -122,18 +134,19 @@ export class Hud {
     ctx.font = `600 ${12 * scale}px system-ui, sans-serif`;
     ctx.fillText(sub, x + 66 * scale, y + 58 * scale);
 
-    // phase countdown badge on the right
-    const badgeW = 74 * scale;
-    ctx.fillStyle = color;
-    ctx.font = `900 ${26 * scale}px "Arial Black", Arial, sans-serif`;
-    ctx.textAlign = 'right';
-    ctx.fillText(s.light.timeLeft.toFixed(1), x + w - 16 * scale, y + 46 * scale);
-
-    // round timer under the banner
+    // boxed phase countdown below the banner (board style)
+    const cw = 104 * scale, chh = 36 * scale, cy = y + h + 8 * scale;
+    this._panel(ctx, vw / 2 - cw / 2, cy, cw, chh, 8, isRed ? PALETTE.red : null);
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(242,241,236,0.85)';
-    ctx.font = `700 ${13 * scale}px system-ui, sans-serif`;
-    ctx.fillText('⏱ ' + fmtTime(s.roundLeft), vw / 2, y + h + 18 * scale);
+    ctx.fillStyle = color;
+    ctx.font = `900 ${22 * scale}px "Arial Black", Arial, sans-serif`;
+    ctx.fillText(fmtCount(s.light.timeLeft), vw / 2, cy + 26 * scale);
+
+    // round timer chip to the right of the countdown
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(242,241,236,0.75)';
+    ctx.font = `700 ${12 * scale}px system-ui, sans-serif`;
+    ctx.fillText('⏱ ' + fmtTime(s.roundLeft), vw / 2 + cw / 2 + 12 * scale, cy + 23 * scale);
   }
 
   _marks(ctx, s, t, scale) {
@@ -323,6 +336,11 @@ function fmtTime(sec) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+// Phase countdown in the board's boxed style: 00:07
+function fmtCount(sec) {
+  const s = Math.max(0, Math.ceil(sec));
+  return '00:' + String(s).padStart(2, '0');
+}
 function clip(ctx, text, maxW) {
   if (ctx.measureText(text).width <= maxW) return text;
   let s = text;
