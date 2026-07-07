@@ -82,7 +82,7 @@ export function updateNpc(c, dt, ctx) {
   const { world, light, rng } = ctx;
 
   if (light.phase === 'red') {
-    enterFrozen(c, world);
+    enterFrozen(c, world, rng);
     return;
   }
   if (light.phase === 'warning') {
@@ -148,7 +148,7 @@ function poseForZone(zone) {
   }
 }
 
-function enterFrozen(c, world) {
+function enterFrozen(c, world, rng) {
   if (c.state === 'frozen') return;
   c.prevState = c.state === 'resume' ? (c.prevState || 'walking') : c.state;
   c.state = 'frozen';
@@ -159,7 +159,31 @@ function enterFrozen(c, world) {
   if (p) c.pose = p;
   else if (c.pose === 'walk') c.pose = 'stand';
   // else keep current idle pose (phone/look/stand)
-  c.facing = c.targetFacing; // lock facing crisply for the freeze snap
+
+  // Freeze facing: NPCs turn toward the nearest crowd attractor, so a cluster
+  // visibly shares one "型" that a Faker must match. r may be omitted for the
+  // player (they keep whatever facing they set up).
+  if (c.kind === 'npc') {
+    const a = world.nearestAttractor(c.x, c.y, TUNING.conform.attractorRange);
+    if (a) {
+      const jitter = rng ? rng.range(-0.18, 0.18) : 0;
+      c.facing = c.targetFacing = Math.atan2(a.y - c.y, a.x - c.x) + jitter;
+    } else {
+      c.facing = c.targetFacing; // keep heading
+    }
+  } else if (c.kind === 'faker') {
+    // AI Faker imperfectly aligns to the crowd based on skill.
+    const a = world.nearestAttractor(c.x, c.y, TUNING.conform.attractorRange);
+    if (a && rng) {
+      const err = (1 - c.aiSkill) * rng.range(-2.4, 2.4);
+      c.facing = c.targetFacing = Math.atan2(a.y - c.y, a.x - c.x) + err;
+    } else {
+      c.facing = c.targetFacing;
+    }
+  } else {
+    c.facing = c.targetFacing; // player
+  }
+  c.freezePop = 1; // renderer freeze-snap pop
 }
 
 // Called once when red ends: set the staggered resume.
@@ -176,18 +200,16 @@ export function updateFakerAI(c, dt, ctx) {
   c.syncCooldown = Math.max(0, c.syncCooldown - dt);
 
   if (light.phase === 'red') {
-    // Should stand still. Imperfect fakers occasionally twitch -> suspicion.
+    // Stand still and hold the frozen pose. Conformity suspicion (facing /
+    // pose / spacing vs the crowd) is scored centrally in the game loop.
     c.speed = 0;
-    if (c.state !== 'frozen') enterFrozen(c, world);
-    const jitterChance = (1 - c.aiSkill) * 0.35 * dt;
-    if (rng.chance(jitterChance)) {
-      c.suspicion = Math.min(100, c.suspicion + rng.range(6, 16));
-      c.mistake = 0.4;
-      c.facing += rng.range(-0.5, 0.5);
+    if (c.state !== 'frozen') enterFrozen(c, world, rng);
+    // Low-skill fakers occasionally break the freeze with a visible twitch.
+    if (rng.chance((1 - c.aiSkill) * 0.28 * dt)) {
+      c.mistake = 0.45;
+      c.facing += rng.range(-0.4, 0.4);
     }
     c.mistake = Math.max(0, c.mistake - dt);
-    // Slow passive calm if behaving.
-    c.suspicion = Math.max(0, c.suspicion - TUNING.suspicion.goodFreeze * 0.2 * dt);
     return;
   }
 

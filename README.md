@@ -10,12 +10,32 @@ Freeze Faker は、NPCの群衆に紛れた人間プレイヤーが、Red Light 
 
 ---
 
-## ▶ Playable Build (Classic · Freeze Run)
+## ▶ Playable Build
 
-This repository now includes a **fully playable single-player vertical slice** of the
-Classic mode, built as a zero-dependency web game (HTML5 Canvas + ES modules).
-You are a **Faker**: cross the Station Front plaza to the gate while an **AI Watcher**
-hunts the crowd during every Red Light. Blend in, freeze naturally, and don’t act human.
+This repository includes a **fully playable single-player build**, made as a
+zero-dependency web game (HTML5 Canvas + ES modules), with three modes:
+
+- **Classic · Freeze Run** — cross the Station Front plaza to the gate while an AI Watcher hunts the crowd.
+- **Blend Task** — complete disguise objectives around the plaza, then reach the gate.
+- **Watcher · Spot the Human** — *you* watch the crowd from above; find the hidden Fakers and accuse them.
+
+### The core mechanic: don’t just stop — stop like an NPC
+
+This is the part that makes it Freeze Faker and not just Red Light Green Light.
+When Red Light hits, the whole crowd freezes and **turns to face the nearest point
+of interest** (a shop window, a sign, the station gate) — so each cluster shares a
+readable "型" (stance). A Faker is judged **not by whether they moved**, but by how
+far their frozen **facing, pose and spacing** drift from that local crowd baseline:
+
+- face the wrong way → **Wrong way**
+- stand apart from everyone → **Too alone**
+- hold the wrong pose in a context spot → **Odd pose**
+
+During Red Light you can **pivot in place** (movement keys) to fix your stance
+without walking, or use **NPC Sync** to snap to a neighbour. Your current tell shows
+over your head, and a small arrow points where the crowd is looking. In Watcher mode
+the AI Fakers show these same tells through their actual body language — your job is
+to read them.
 
 ### Run it
 
@@ -31,14 +51,24 @@ python3 -m http.server 8000
 
 ### Controls
 
+**Faker (Classic / Blend Task):**
+
 | Action | Key |
 | --- | --- |
-| Move | `W A S D` / Arrow keys |
+| Move (Green) · Pivot in place (Red) | `W A S D` / Arrow keys |
 | Jog (faster, more suspicious) | hold `Shift` |
 | Disguise / Mimic actions | `1`–`6` |
 | Smart disguise (auto-pick for your spot) | `Q` |
-| NPC Sync (copy a nearby NPC’s pose) | `E` |
+| NPC Sync (copy a nearby NPC’s facing + pose) | `E` |
 | Pause | `Esc` / `P` |
+
+**Watcher (Spot the Human):**
+
+| Action | Input |
+| --- | --- |
+| Aim the focus reticle | Move the mouse |
+| Accuse a suspect (Red Light only) | Left click |
+| Pin / unpin a suspect | Right click |
 
 ### How to win
 
@@ -50,14 +80,18 @@ python3 -m http.server 8000
 
 ### What’s implemented
 
-- Green / Red Light cycle with a warning phase, per-phase countdown, and staggered NPC resume
+- Three modes: **Classic · Freeze Run**, **Blend Task** (missions), and playable **Watcher · Spot the Human**
+- **Freeze-conformity** core: crowd faces shared attractors on freeze; Fakers judged on facing / pose / spacing
+  deviation — with on-screen tells, an expected-facing arrow, and pivot-in-place on Red
+- Green / Red Light cycle with a warning phase, per-phase countdown, freeze-snap flash, and staggered NPC resume
 - A readable NPC crowd (~48) with archetypes, wander schedules and context-aware freeze poses
-- AI **decoy Fakers** who also race the gate and can be caught in your place
-- **Suspicion system** (movement on red, jogging, sharp turns, isolation, wrong-context actions,
-  collisions — offset by valid actions, natural freezes and syncs)
+- AI **decoy Fakers** who race the gate, freeze with imperfect tells, and can be caught in your place
+- **Suspicion system** (conformity, jogging, sharp turns, isolation, wrong-context actions, collisions —
+  offset by valid actions, good freezes and NPC Sync)
 - **AI Watcher** with a roaming focus reticle, dwell-to-lock accusation, and a marks economy
-- Disguise action bar, NPC Sync cooldown, and the full in-match HUD from the UI concept board
-- Title / How-to / Settings / Pause / Result screens, recreated **Freeze Faker** logo
+- **End-of-round identity reveal** marking every Faker
+- Disguise action bar, NPC Sync cooldown, mission checklist, and the full in-match HUD from the UI concept board
+- Mode select · Title · How-to · Settings · Pause · Result screens, recreated **Freeze Faker** logo
 - EN / JA localization, colorblind signal assist, volume + HUD-scale settings (saved locally)
 - Fully synthesized audio (WebAudio) — no external asset files
 
@@ -72,10 +106,11 @@ styles.css          menu / screen styling src/characters.js   NPC + Faker behavi
 assets/favicon.svg  tab icon              src/renderer.js     camera, crowd & plaza drawing
 src/main.js         bootstrap             src/hud.js          in-match HUD
 src/config.js       palette, tuning, i18n src/lights.js       green/red light cycle
-src/game.js         state machine + loop  src/suspicion.js    suspicion scoring
-src/input.js        keyboard / pointer    src/watcher.js      AI Watcher & accusation
-src/audio.js        synthesized SFX       src/ui.js           logo + DOM screens
-src/rng.js          seedable PRNG         src/store.js        settings persistence
+src/game.js         modes + loop          src/suspicion.js    suspicion scoring
+src/input.js        keyboard / mouse      src/conformity.js   crowd-baseline freeze scoring
+src/audio.js        synthesized SFX       src/watcher.js      AI Watcher & accusation
+src/rng.js          seedable PRNG         src/ui.js           logo + DOM screens
+                                          src/store.js        settings persistence
 ```
 
 This slice corresponds to Milestones 1–2 in the [Development Spec](docs/DEVELOPMENT_SPEC.md)

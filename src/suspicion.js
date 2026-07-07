@@ -12,13 +12,12 @@ export function updatePlayerSuspicion(player, dt, ctx) {
   const isolated = nearest > S.isolationRadius;
 
   if (light.phase === 'red') {
-    if (moving) {
-      delta += S.moveOnRed * dt;           // the cardinal sin
-    } else {
-      // Freezing still. Better if you're not stranded alone in the open.
-      const bonus = isolated ? 0.35 : 1;
-      delta -= S.goodFreeze * dt * bonus;
-    }
+    // Conformity: judged by facing / pose / spacing vs the crowd, not just
+    // whether you moved (ctx.humanness already folds movement in).
+    const C = TUNING.conform;
+    const h = ctx.humanness ?? (moving ? 1 : 0);
+    if (h > C.tellShow) delta += C.redRise * h * dt;
+    else delta -= C.goodFreeze * dt;
     // Spinning to look around during the freeze reads as human.
     const churn = Math.abs(angleDelta(player.facing, player.lastFacing)) / Math.max(dt, 0.0001);
     if (churn > 2.2 && !player._syncedThisFrame) delta += S.facingChurn * dt;

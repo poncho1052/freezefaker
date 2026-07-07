@@ -12,12 +12,72 @@ export class Hud {
 
     this._banner(ctx, vw, s, t, scale);
     this._marks(ctx, s, t, scale);
-    this._status(ctx, vw, s, t, scale);
-    this._actionBar(ctx, vw, vh, s, t, scale);
-    this._sync(ctx, vh, s, t, scale);
-    this._penalty(ctx, vw, vh, s, t, scale);
+
+    if (s.role === 'watcher') {
+      this._fakersLeft(ctx, vw, s, t, scale);
+      this._watchHint(ctx, vw, vh, s, t, scale);
+    } else {
+      this._status(ctx, vw, s, t, scale);
+      this._actionBar(ctx, vw, vh, s, t, scale);
+      this._sync(ctx, vh, s, t, scale);
+      this._penalty(ctx, vw, vh, s, t, scale);
+      if (s.missions) this._missions(ctx, vw, s, t, scale);
+    }
 
     ctx.restore();
+  }
+
+  _fakersLeft(ctx, vw, s, t, scale) {
+    const w = 200 * scale, h = 58 * scale, x = vw - w - 16 * scale, y = 16 * scale;
+    this._panel(ctx, x, y, w, h);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${11 * scale}px system-ui`;
+    ctx.fillText(t.fakersLeft.toUpperCase(), x + 14 * scale, y + 22 * scale);
+    ctx.fillStyle = PALETTE.red; ctx.font = `800 ${24 * scale}px system-ui`;
+    ctx.fillText(`${s.fakersAlive}`, x + 14 * scale, y + 46 * scale);
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${14 * scale}px system-ui`;
+    ctx.fillText(`/ ${s.fakersTotal}`, x + 44 * scale, y + 46 * scale);
+    // little person icons
+    for (let i = 0; i < s.fakersTotal; i++) {
+      const dx = x + w - 16 * scale - i * 18 * scale;
+      ctx.fillStyle = i < s.fakersAlive ? PALETTE.red : 'rgba(154,163,173,0.35)';
+      ctx.beginPath(); ctx.arc(dx, y + 24 * scale, 3.5 * scale, 0, 7); ctx.fill();
+      ctx.fillRect(dx - 3 * scale, y + 28 * scale, 6 * scale, 10 * scale);
+    }
+  }
+
+  _watchHint(ctx, vw, vh, s, t, scale) {
+    const red = s.light.phase === 'red';
+    const w = 460 * scale, h = 40 * scale, x = vw / 2 - w / 2, y = vh - h - 18 * scale;
+    ctx.fillStyle = red ? 'rgba(46,12,12,0.9)' : 'rgba(14,22,33,0.85)';
+    rrect(ctx, x, y, w, h, 10); ctx.fill();
+    ctx.strokeStyle = red ? PALETTE.red : 'rgba(154,163,173,0.28)'; ctx.lineWidth = 1.4;
+    rrect(ctx, x, y, w, h, 10); ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = red ? PALETTE.red : PALETTE.offwhite; ctx.font = `800 ${13 * scale}px system-ui`;
+    ctx.fillText(s.hint, vw / 2, y + 18 * scale);
+    ctx.fillStyle = PALETTE.gray; ctx.font = `600 ${11 * scale}px system-ui`;
+    ctx.fillText(`${s.pinHint}   ·   ${t.pinned}: ${s.pinsCount}`, vw / 2, y + 33 * scale);
+  }
+
+  _missions(ctx, vw, s, t, scale) {
+    const rows = s.missions;
+    const w = 230 * scale, rowH = 20 * scale, h = 30 * scale + rows.length * rowH;
+    const x = 16 * scale, y = 84 * scale;
+    this._panel(ctx, x, y, w, h);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.amber; ctx.font = `800 ${11 * scale}px system-ui`;
+    ctx.fillText(s.missionsTitle.toUpperCase(), x + 14 * scale, y + 20 * scale);
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i], ry = y + 34 * scale + i * rowH;
+      // checkbox
+      ctx.strokeStyle = r.done ? PALETTE.green : 'rgba(154,163,173,0.6)'; ctx.lineWidth = 1.5;
+      rrect(ctx, x + 14 * scale, ry - 9 * scale, 11 * scale, 11 * scale, 2); ctx.stroke();
+      if (r.done) { ctx.strokeStyle = PALETTE.green; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 16 * scale, ry - 3.5 * scale); ctx.lineTo(x + 19 * scale, ry - 0.5 * scale); ctx.lineTo(x + 24 * scale, ry - 7 * scale); ctx.stroke(); }
+      ctx.fillStyle = r.done ? PALETTE.green : PALETTE.offwhite;
+      ctx.font = `${r.done ? 600 : 500} ${11 * scale}px system-ui`;
+      ctx.fillText(clip(ctx, r.label, w - 44 * scale), x + 32 * scale, ry);
+    }
   }
 
   _panel(ctx, x, y, w, h, r = 12) {
@@ -189,9 +249,9 @@ export class Hud {
     ctx.globalAlpha = 1;
     ctx.fillStyle = PALETTE.amber; ctx.textAlign = 'left';
     ctx.font = `800 ${13 * scale}px system-ui`;
-    ctx.fillText('⚠ MOVING ON RED', x + 12 * scale, y + 24 * scale);
+    ctx.fillText('⚠ ' + t.penaltyT, x + 12 * scale, y + 24 * scale);
     ctx.fillStyle = PALETTE.offwhite; ctx.font = `600 ${10 * scale}px system-ui`;
-    ctx.fillText('You look human. Stop!', x + 12 * scale, y + 40 * scale);
+    ctx.fillText(t.penaltySub, x + 12 * scale, y + 40 * scale);
   }
 }
 
@@ -263,3 +323,9 @@ function fmtTime(sec) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+function clip(ctx, text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  let s = text;
+  while (s.length > 1 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1);
+  return s + '…';
+}

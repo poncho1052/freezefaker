@@ -5,6 +5,8 @@ export class Input {
     this.pressed = new Set();   // edge: became-down this frame
     this.handlers = { press: [] };
     this.pointer = { x: 0, y: 0, down: false };
+    this.clicked = false;        // left-button edge this frame
+    this.rightClicked = false;   // right-button edge this frame
     this._target = target;
 
     this._onKeyDown = (e) => {
@@ -28,8 +30,12 @@ export class Input {
       const p = pointFrom(e);
       this.pointer.x = p.x; this.pointer.y = p.y;
     };
-    this._onDown = (e) => { this.pointer.down = true; this._onMove(e); };
+    this._onDown = (e) => {
+      this.pointer.down = true; this._onMove(e);
+      if (e.button === 2) this.rightClicked = true; else this.clicked = true;
+    };
     this._onUp = () => { this.pointer.down = false; };
+    this._onCtx = (e) => e.preventDefault(); // allow right-click as a game button
 
     target.addEventListener('keydown', this._onKeyDown, { passive: false });
     target.addEventListener('keyup', this._onKeyUp);
@@ -37,6 +43,7 @@ export class Input {
     target.addEventListener('pointermove', this._onMove);
     target.addEventListener('pointerdown', this._onDown);
     target.addEventListener('pointerup', this._onUp);
+    target.addEventListener('contextmenu', this._onCtx);
   }
 
   onPress(fn) { this.handlers.press.push(fn); }
@@ -54,7 +61,7 @@ export class Input {
     return m > 0 ? { x: x / m, y: y / m, mag: 1 } : { x: 0, y: 0, mag: 0 };
   }
 
-  endFrame() { this.pressed.clear(); }
+  endFrame() { this.pressed.clear(); this.clicked = false; this.rightClicked = false; }
 }
 
 const GAMEPLAY_KEYS = new Set([

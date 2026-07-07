@@ -87,7 +87,35 @@ export const TUNING = {
     syncCooldown: 14,       // seconds (dev spec suggests 10-20)
     syncRange: 170,
   },
+
+  // Freeze-conformity: the heart of the game. During Red Light a Faker is
+  // judged by how far their frozen facing / pose / spacing drifts from the
+  // local NPC crowd baseline — not merely by whether they moved.
+  conform: {
+    neighborRadius: 250,    // px: who counts as "the local crowd"
+    facingTolDeg: 52,       // within this angle you read as aligned
+    attractorRange: 360,    // NPCs face the nearest attractor within this
+    redRise: 42,            // suspicion/sec at full human-ness on red
+    goodFreeze: 30,         // suspicion/sec decay when well-blended
+    tellShow: 0.30,         // human-ness above which a personal tell shows
+  },
+
+  // Player-Watcher tuning.
+  watch: {
+    marks: 6,
+    pickRadius: 46,         // px from cursor to select a character
+    viewW: 1720, viewH: 1080,
+  },
 };
+
+// Blend Task objectives (Mission mode). `ctx` matches a disguise action; `red`
+// tasks require standing in the zone during a Red Light.
+export const MISSIONS = [
+  { id: 'shop',    ctx: 'shop',    labelEN: 'Look at a shop window', labelJA: 'ショーウィンドウを見る' },
+  { id: 'vending', ctx: 'vending', labelEN: 'Check a vending machine', labelJA: '自販機をチェック' },
+  { id: 'bench',   ctx: 'bench',   labelEN: 'Sit on a bench', labelJA: 'ベンチに座る' },
+  { id: 'cross',   ctx: 'sign', red: true, labelEN: 'Wait at the crossing on Red', labelJA: '赤の間、横断歩道で待つ' },
+];
 
 // Disguise / mimic actions. `ctx` is the interaction-zone tag that makes it valid.
 export const ACTIONS = [
@@ -130,6 +158,27 @@ export const I18N = {
     tutHint2: 'RED LIGHT! Stop moving now.',
     tutHint3: 'Press E next to an NPC to sync your pose.',
     clickStart: 'Click or press any key to start',
+    // mode select
+    chooseMode: 'Choose a Mode',
+    classicName: 'Classic · Freeze Run', classicDesc: 'Blend through the crowd to the gate while an AI Watcher hunts you.',
+    missionName: 'Blend Task', missionDesc: 'Complete disguise tasks around the plaza, then reach the gate.',
+    watchName: 'Watcher · Spot the Human', watchDesc: 'You watch the crowd. Find the hidden Fakers and accuse them.',
+    // freeze tells (shown over your own head on Red)
+    tellFacing: 'Wrong way', tellIso: 'Too alone', tellPose: 'Odd pose', tellMove: 'Moving!', tellOk: 'Blended',
+    faceCrowd: 'Face where the crowd faces',
+    penaltyT: 'YOU LOOK HUMAN', penaltySub: 'Match the crowd’s stance',
+    // watcher HUD / results
+    fakersLeft: 'Fakers', accuseHint: 'RED LIGHT — click a suspect to accuse', pinHint: 'Right-click to pin a suspect',
+    observeHint: 'GREEN — watch how they move', pinned: 'Pinned',
+    watchWin: 'All Fakers Caught', watchWinSub: 'You read the crowd',
+    watchLose: 'A Faker Escaped', watchLoseSub: 'One reached the gate',
+    watchMarks: 'Out of Marks', watchMarksSub: 'Too many false accusations',
+    watchTimeUp: 'Fakers Survived', watchTimeUpSub: 'You ran out of time',
+    // missions
+    objectives: 'Objectives', taskGate: 'Reach the gate', missionDone: 'Tasks done — reach the gate!',
+    // reveal
+    revealTitle: 'The humans were',
+    statCaught: 'Caught', statAccuracy: 'Accuracy',
   },
   ja: {
     play: 'あそぶ', howto: 'あそびかた', settings: '設定', back: 'もどる',
@@ -160,5 +209,26 @@ export const I18N = {
     tutHint2: 'RED LIGHT！ いますぐ止まれ。',
     tutHint3: 'NPCの隣でEを押してポーズを合わせよう。',
     clickStart: 'クリックまたはキーで開始',
+    // mode select
+    chooseMode: 'モード選択',
+    classicName: 'クラシック · Freeze Run', classicDesc: 'AI Watcherに見抜かれずに、群衆に紛れて改札へ。',
+    missionName: 'Blend Task', missionDesc: '広場で擬態ミッションをこなし、改札を目指せ。',
+    watchName: 'Watcher · 人間を探せ', watchDesc: 'あなたが監視者。群衆に紛れたFakerを見つけて指摘しろ。',
+    // freeze tells
+    tellFacing: '向きがズレてる', tellIso: '一人ぼっち', tellPose: 'ポーズが変', tellMove: '動いてる！', tellOk: '紛れてる',
+    faceCrowd: '群衆と同じ向きを向け',
+    penaltyT: '人間っぽい', penaltySub: '群衆と同じ姿勢に',
+    // watcher HUD / results
+    fakersLeft: 'Faker', accuseHint: 'RED LIGHT — 怪しい人をクリックして指摘', pinHint: '右クリックでマーク',
+    observeHint: 'GREEN — 動きをよく見ろ', pinned: 'マーク中',
+    watchWin: '全員捕まえた', watchWinSub: '群衆を読み切った',
+    watchLose: 'Fakerに逃げられた', watchLoseSub: '改札に到達された',
+    watchMarks: '指摘切れ', watchMarksSub: '誤指摘が多すぎた',
+    watchTimeUp: 'Fakerが生き残った', watchTimeUpSub: '時間切れ',
+    // missions
+    objectives: 'ミッション', taskGate: '改札にたどり着く', missionDone: 'ミッション完了 — 改札へ！',
+    // reveal
+    revealTitle: '人間はこの中に',
+    statCaught: '捕まえた', statAccuracy: '正解率',
   },
 };

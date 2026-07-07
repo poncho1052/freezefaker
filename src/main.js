@@ -20,10 +20,11 @@ game.applySettings();
 
 const persist = () => { saveSettings(settings); game.applySettings(); audio.resume(); };
 
-ui.on('play', () => game.start(false));
-ui.on('tutorial', () => game.start(true));
+ui.on('play', () => game.start({ mode: 'classic' }));
+ui.on('startMode', (m) => game.start({ mode: m }));
+ui.on('tutorial', () => game.start({ tutorial: true }));
 ui.on('resume', () => game.resume());
-ui.on('restart', () => game.start(game.tutorial));
+ui.on('restart', () => game.start({ mode: game.mode, tutorial: game.tutorial }));
 ui.on('quit', () => game.quitToTitle());
 ui.on('settings', persist);
 

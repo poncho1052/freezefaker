@@ -33,6 +33,7 @@ export class Ui {
     this.root.innerHTML = '';
     this.screens = {};
     this.screens.title = this._titleScreen();
+    this.screens.modeselect = this._modeScreen();
     this.screens.howto = this._howToScreen();
     this.screens.settings = this._settingsScreen();
     this.screens.pause = this._pauseScreen();
@@ -66,11 +67,33 @@ export class Ui {
         <button class="btn ghost" data-act="howto"><span data-i="howto"></span></button>
         <button class="btn ghost" data-act="settings"><span data-i="settings"></span></button>
       </div>
-      <div class="credits">Freeze Faker · Classic · Freeze Run — prototype build</div>`;
-    el.querySelector('[data-act=play]').onclick = () => this.cb.play?.();
+      <div class="credits">Freeze Faker — prototype build</div>`;
+    el.querySelector('[data-act=play]').onclick = () => this.show('modeselect');
     el.querySelector('[data-act=tutorial]').onclick = () => this.cb.tutorial?.();
     el.querySelector('[data-act=howto]').onclick = () => this.show('howto');
-    el.querySelector('[data-act=settings]').onclick = () => this.show('settings');
+    el.querySelector('[data-act=settings]').onclick = () => { this._returnTo = 'title'; this.show('settings'); };
+    return el;
+  }
+
+  _modeScreen() {
+    const el = div('screen');
+    el.innerHTML = `
+      <div class="logo small">${''}<span class="freeze">FREEZE</span><span class="faker glitch">FAKER</span></div>
+      <h2 class="mode-h" data-i="chooseMode" style="letter-spacing:.14em;text-transform:uppercase;z-index:1"></h2>
+      <div class="mode-grid">
+        <button class="mode-card" data-mode="classic">
+          <div class="mc-ic">🚦</div><h3 data-i="classicName"></h3><p data-i="classicDesc"></p>
+        </button>
+        <button class="mode-card" data-mode="mission">
+          <div class="mc-ic">✅</div><h3 data-i="missionName"></h3><p data-i="missionDesc"></p>
+        </button>
+        <button class="mode-card" data-mode="watch">
+          <div class="mc-ic">👁</div><h3 data-i="watchName"></h3><p data-i="watchDesc"></p>
+        </button>
+      </div>
+      <div class="actions"><button class="btn ghost" data-act="back"><span data-i="back"></span></button></div>`;
+    el.querySelectorAll('.mode-card').forEach((b) => b.onclick = () => this.cb.startMode?.(b.dataset.mode));
+    el.querySelector('[data-act=back]').onclick = () => this.show('title');
     return el;
   }
 
@@ -178,20 +201,14 @@ export class Ui {
     return el;
   }
 
+  // data: { win, title, sub, stats:[{k,v}] }
   showResult(data) {
-    const t = this.t();
     const el = this.screens.result;
     const v = el.querySelector('[data-r=verdict]');
-    v.textContent = data.win ? t.win : (data.reason === 'timeup' ? t.timeUp : t.lose);
+    v.textContent = data.title;
     v.className = 'verdict ' + (data.win ? 'win' : 'lose');
-    el.querySelector('[data-r=sub]').textContent = data.win ? t.winSub : (data.reason === 'timeup' ? t.timeUpSub : t.loseSub);
-    const stats = el.querySelector('[data-r=stats]');
-    stats.innerHTML = [
-      stat(t.statTime, data.survival),
-      stat(t.statProgress, data.progress),
-      stat(t.statActions, String(data.actions)),
-      stat(t.statSync, String(data.syncs)),
-    ].join('');
+    el.querySelector('[data-r=sub]').textContent = data.sub || '';
+    el.querySelector('[data-r=stats]').innerHTML = data.stats.map((s) => stat(s.k, s.v)).join('');
     this.show('result');
   }
 

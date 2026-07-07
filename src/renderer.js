@@ -28,8 +28,7 @@ export class Renderer {
   }
 
   // Fit a target world-area into view; follow a focus point.
-  updateCamera(focus, dt = 0.016) {
-    const viewW = 1240, viewH = 820;
+  updateCamera(focus, dt = 0.016, viewW = 1240, viewH = 820) {
     const zoom = Math.min(this.vw / viewW, this.vh / viewH) * 1.0;
     this.cam.zoom = zoom;
     const halfW = this.vw / zoom / 2, halfH = this.vh / zoom / 2;
@@ -45,6 +44,13 @@ export class Renderer {
     return {
       x: (x - this.cam.x) * this.cam.zoom + this.vw / 2,
       y: (y - this.cam.y) * this.cam.zoom + this.vh / 2,
+    };
+  }
+
+  s2w(sx, sy) {
+    return {
+      x: (sx - this.vw / 2) / this.cam.zoom + this.cam.x,
+      y: (sy - this.vh / 2) / this.cam.zoom + this.cam.y,
     };
   }
 
@@ -67,17 +73,36 @@ export class Renderer {
     // Goal glow
     this._drawGoal(scene);
 
+    // Watcher-mode pins (drawn under characters).
+    if (scene.role === 'watcher' && scene.watch) {
+      for (const c of scene.chars) if (scene.watch.pins.has(c.id) && !c.eliminated) this._drawPin(c);
+    }
+
     // Characters, depth-sorted by y.
     const chars = scene.chars.slice().sort((a, b) => a.y - b.y);
     for (const c of chars) this._drawCharacter(ctx, c, scene);
 
-    // Watcher focus reticle (in-world).
-    if (scene.reticle && scene.reticle.visible) this._drawReticle(scene.reticle);
+    // End-of-round identity reveal: mark every Faker.
+    if (scene.reveal) for (const c of chars) if (c.kind === 'faker' || c.kind === 'player') this._drawReveal(c, scene);
+
+    if (scene.role === 'watcher' && scene.watch) {
+      if (scene.watch.hover && !scene.watch.hover.eliminated) this._drawHover(scene.watch.hover, scene);
+      this._drawCursor(scene.watch, scene);
+    } else if (scene.reticle && scene.reticle.visible) {
+      // AI Watcher focus reticle (Faker modes).
+      this._drawReticle(scene.reticle);
+    }
 
     ctx.restore();
 
     // Full-screen light tint (subtle, keeps crowd readable).
     this._drawLightTint(scene);
+
+    // Freeze-snap flash.
+    if (scene.flash > 0.001) {
+      ctx.fillStyle = `rgba(242,241,236,${scene.flash * 0.45})`;
+      ctx.fillRect(0, 0, this.vw, this.vh);
+    }
 
     ctx.restore();
   }
@@ -226,7 +251,7 @@ export class Renderer {
   // ---------------- character ----------------
   _drawCharacter(ctx, c, scene) {
     const a = c.appearance;
-    const s = a.scale;
+    const s = a.scale * (1 + (c.freezePop || 0) * 0.16); // freeze-snap pop
     const px = c.x, py = c.y;
     const sit = c.pose === 'sit';
     const bodyH = (sit ? 15 : 22) * s;
@@ -286,9 +311,15 @@ export class Renderer {
       roundRect(ctx, hx - headR - 1, hy - headR - 3, (headR + 1) * 2, 4 * s, 2); ctx.fill();
       ctx.beginPath(); ctx.arc(hx, hy - headR + 1, headR * 0.85, Math.PI, 0); ctx.fill();
     }
-    // gaze indicator (facing) — a small dark marker on the front of the head
-    const gx = hx + Math.cos(c.facing) * headR * 0.7;
-    const gy = hy + Math.sin(c.facing) * headR * 0.55;
+    // gaze indicator (facing) — a nose wedge so "which way are they looking"
+    // reads at a glance (critical for the conformity read).
+    const fc = Math.cos(c.facing), fs = Math.sin(c.facing);
+    const gx = hx + fc * headR * 0.75, gy = hy + fs * headR * 0.6;
+    const px1 = hx - fs * headR * 0.42, py1 = hy + fc * headR * 0.42;
+    const px2 = hx + fs * headR * 0.42, py2 = hy - fc * headR * 0.42;
+    ctx.fillStyle = shade(a.skin, 18);
+    ctx.beginPath(); ctx.moveTo(px1, py1); ctx.lineTo(px2, py2);
+    ctx.lineTo(hx + fc * headR * 1.15, hy + fs * headR * 1.0); ctx.closePath(); ctx.fill();
     ctx.fillStyle = 'rgba(20,24,30,0.85)';
     ctx.beginPath(); ctx.arc(gx, gy, 1.7 * s, 0, 7); ctx.fill();
     if (a.glasses) {
@@ -320,6 +351,40 @@ export class Renderer {
         ctx.strokeStyle = `rgba(${c.suspicion > 66 ? '229,57,53' : '255,193,7'},${0.3 + 0.4 * a2})`;
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(px, py + 2, bodyW * 0.75 + Math.sin(t * 6) * 1.5, 0, 7); ctx.stroke();
+      }
+
+      // During Red Light: show where the crowd is looking, and your own tell.
+      if (scene.light.phase === 'red') {
+        if (c.baseFacing != null) {
+          const off = c.tellTag === 'facing';
+          ctx.strokeStyle = off ? 'rgba(229,57,53,0.9)' : 'rgba(46,204,113,0.8)';
+          ctx.lineWidth = 2.4;
+          const r0 = bodyW * 0.95, r1 = bodyW * 1.7;
+          const bx = Math.cos(c.baseFacing), by = Math.sin(c.baseFacing);
+          ctx.beginPath();
+          ctx.moveTo(px + bx * r0, py + 2 + by * r0);
+          ctx.lineTo(px + bx * r1, py + 2 + by * r1);
+          ctx.stroke();
+          // arrow head
+          const ah = c.baseFacing;
+          ctx.beginPath();
+          ctx.moveTo(px + bx * r1, py + 2 + by * r1);
+          ctx.lineTo(px + Math.cos(ah + 2.5) * (r1 - 6), py + 2 + Math.sin(ah + 2.5) * (r1 - 6));
+          ctx.lineTo(px + Math.cos(ah - 2.5) * (r1 - 6), py + 2 + Math.sin(ah - 2.5) * (r1 - 6));
+          ctx.closePath(); ctx.fill();
+        }
+        if (c.humanness > 0.30 && scene.tells) {
+          const tag = c.tellTag;
+          const col = tag === 'move' ? PALETTE.red : PALETTE.amber;
+          const label = scene.tells[tag] || '';
+          const ty = topY - headR * 3.4 - Math.sin(t * 6) * 1.5;
+          ctx.font = '700 12px system-ui, sans-serif'; ctx.textAlign = 'center';
+          const wlab = ctx.measureText(label).width + 16;
+          ctx.fillStyle = 'rgba(14,22,33,0.9)';
+          roundRect(ctx, px - wlab / 2, ty - 13, wlab, 18, 6); ctx.fill();
+          ctx.strokeStyle = col; ctx.lineWidth = 1.4; roundRect(ctx, px - wlab / 2, ty - 13, wlab, 18, 6); ctx.stroke();
+          ctx.fillStyle = col; ctx.fillText('⚠ ' + label, px, ty);
+        }
       }
     }
 
@@ -366,6 +431,47 @@ export class Renderer {
       ctx.fillStyle = '#0b0f14'; roundRect(ctx, px - 3, topY - 5, 6 * s, 9 * s, 1.5); ctx.fill();
       ctx.fillStyle = 'rgba(160,210,255,0.9)'; ctx.fillRect(px - 2, topY - 4, 4 * s, 6 * s);
     }
+  }
+
+  _drawReveal(c, scene) {
+    const ctx = this.ctx;
+    const yy = c.y - 46;
+    const col = c.eliminated ? PALETTE.gray : PALETTE.red;
+    ctx.fillStyle = col;
+    // pin-drop marker
+    ctx.beginPath();
+    ctx.arc(c.x, yy, 9, Math.PI, 0); ctx.lineTo(c.x, yy + 14); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#0E1621'; ctx.beginPath(); ctx.arc(c.x, yy, 4, 0, 7); ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(c.x, c.y + 2, 18 + Math.sin(scene.time * 4) * 2, 0, 7); ctx.stroke();
+  }
+
+  _drawPin(c) {
+    const ctx = this.ctx;
+    ctx.strokeStyle = PALETTE.amber; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(c.x, c.y + 2, 20, 0, 7); ctx.stroke();
+    const yy = c.y - 44;
+    ctx.fillStyle = PALETTE.amber;
+    ctx.beginPath(); ctx.arc(c.x, yy, 7, Math.PI, 0); ctx.lineTo(c.x, yy + 11); ctx.closePath(); ctx.fill();
+  }
+
+  _drawHover(c, scene) {
+    const ctx = this.ctx;
+    ctx.strokeStyle = PALETTE.offwhite; ctx.lineWidth = 1.6;
+    ctx.setLineDash([5, 4]); ctx.lineDashOffset = -scene.time * 14;
+    ctx.beginPath(); ctx.arc(c.x, c.y + 2, 22, 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  _drawCursor(watch, scene) {
+    const ctx = this.ctx;
+    const red = scene.light.phase === 'red';
+    const r = { x: watch.reticle.x, y: watch.reticle.y, size: 22, pulse: scene.time, lock: 0 };
+    // Reuse the bracket reticle; red when you can accuse, amber when observing.
+    const color = red ? PALETTE.red : PALETTE.amber;
+    ctx.strokeStyle = color; ctx.lineWidth = 2.2;
+    bracket(ctx, r.x, r.y, r.size + Math.sin(scene.time * 6) * 1.5, color);
+    ctx.beginPath(); ctx.arc(r.x, r.y, 2.4, 0, 7); ctx.fillStyle = color; ctx.fill();
   }
 
   _drawReticle(r) {

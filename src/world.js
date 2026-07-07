@@ -8,10 +8,12 @@ export function createWorld() {
   const props = [];
   const zones = [];
   const obstacles = []; // AABBs that block movement
+  const attractors = []; // points the frozen crowd naturally looks toward
 
   const addProp = (p) => { props.push(p); return p; };
   const addZone = (tag, x, y, rw, rh, label) => zones.push({ tag, x, y, w: rw, h: rh, cx: x + rw / 2, cy: y + rh / 2, label });
   const addObstacle = (x, y, rw, rh) => obstacles.push({ x, y, w: rw, h: rh });
+  const addAttractor = (x, y) => attractors.push({ x, y });
 
   // ---- Top building band (station + shops). Blocks the top edge. ----
   addProp({ type: 'skyline', x: 0, y: 0, w, h: 210 });
@@ -28,14 +30,18 @@ export function createWorld() {
   const goal = { x: w / 2, y: 168, r: 74, tag: 'goal' };
   addProp({ type: 'gate', x: w / 2 - 90, y: 150, w: 180, h: 40 });
   addZone('goal', w / 2 - 90, 120, 180, 90, 'GATE');
+  addAttractor(w / 2, 150);              // people face the station gate
+  addAttractor(220, 150); addAttractor(w - 220, 150); // shop fronts up top
 
   // ---- Pedestrian signal poles (the light-state landmarks) ----
   addProp({ type: 'signal', x: w / 2 + 300, y: 210 });
   addProp({ type: 'signal', x: w / 2 - 340, y: 240 });
+  addAttractor(w / 2 + 313, 176); addAttractor(w / 2 - 327, 206);
 
   // ---- Crosswalk across the mid-plaza ----
   addProp({ type: 'crosswalk', x: w / 2 - 320, y: 520, w: 640, h: 90 });
   addZone('sign', w / 2 - 60, 470, 120, 60, 'CROSSING'); // "look at signal" context
+  addAttractor(w / 2, 470);              // crossers look up at the signal
 
   // ---- Left edge: vending machines + shop windows ----
   vendingCluster(60, 360);
@@ -93,12 +99,14 @@ export function createWorld() {
     addProp({ type: 'vending', x: x + 46, y, w: 44, h: 70, hue: '#357' });
     addObstacle(x - 4, y, 98, 66);
     addZone('vending', x - 20, y + 66, 130, 70, 'VENDING');
+    addAttractor(x + 40, y + 30);
   }
   function shopWindow(x, y, side) {
     const px = side === 'left' ? x : x;
     addProp({ type: 'shopwin', x: px, y, w: 90, h: 150, side });
     addObstacle(px, y, 90, 150);
     addZone('shop', side === 'left' ? px + 90 : px - 60, y + 30, 70, 100, 'WINDOW');
+    addAttractor(px + 45, y + 75);
   }
   function bench(x, y) {
     addProp({ type: 'bench', x, y, w: 130, h: 34 });
@@ -108,6 +116,7 @@ export function createWorld() {
     addProp({ type: 'signboard', x, y, w: 150, h: 46, text });
     addObstacle(x + 60, y + 46, 18, 40); // the pole
     addZone('sign', x - 10, y + 90, 170, 60, 'SIGN');
+    addAttractor(x + 75, y + 23);
   }
   function planter(x, y) {
     addProp({ type: 'planter', x, y, w: 70, h: 40 });
@@ -115,7 +124,7 @@ export function createWorld() {
   }
 
   const world = {
-    w, h, props, zones, obstacles, waypoints, spawnPoints, goal,
+    w, h, props, zones, obstacles, waypoints, spawnPoints, goal, attractors,
     // minY reaches up into the gate mouth so the goal is actually reachable;
     // the top building band still blocks everywhere except the gate gap.
     walkable: { minX: 60, minY: 150, maxX: w - 60, maxY: h - 50 },
@@ -133,6 +142,15 @@ export function createWorld() {
         if (tag && z.tag !== tag) continue;
         const dx = x - z.cx, dy = y - z.cy, d = dx * dx + dy * dy;
         if (d < bd) { bd = d; best = z; }
+      }
+      return best;
+    },
+    // Nearest crowd attractor (for freeze facing). Returns {x,y} or null.
+    nearestAttractor(x, y, maxDist) {
+      let best = null, bd = maxDist * maxDist;
+      for (const a of attractors) {
+        const dx = x - a.x, dy = y - a.y, d = dx * dx + dy * dy;
+        if (d < bd) { bd = d; best = a; }
       }
       return best;
     },
