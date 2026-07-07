@@ -4,9 +4,11 @@
 import { TUNING } from './config.js';
 
 export class WatcherAI {
-  constructor(rng) {
+  constructor(rng, opts = {}) {
     this.rng = rng;
-    this.marks = TUNING.watcher.marks;
+    this.marks = TUNING.watcher.marks + (opts.marksBonus || 0);
+    this.aggro = opts.aggro || 1;    // difficulty / twist multiplier
+    this.intelBias = 0;              // grows as outfit intel about the PLAYER reveals
     this.reticle = { x: TUNING.world.w / 2, y: 480, visible: false, lock: 0, size: 24, pulse: 0 };
     this.target = null;
     this.cooldown = 0;
@@ -21,6 +23,8 @@ export class WatcherAI {
     let base;
     if (c.kind === 'npc') base = 6 + hashNoise(c.id) * 12;      // NPCs read low
     else base = c.suspicion;                                     // fakers: real suspicion
+    // The more of your outfit is known, the more you stand out to the AI.
+    if (c.kind === 'player') base += this.intelBias;
     let n = this._noise.get(c.id);
     if (n === undefined) { n = (this.rng.next() * 2 - 1) * W.perceptionNoise; this._noise.set(c.id, n); }
     // Recently-moved fakers stand out extra.
@@ -56,7 +60,7 @@ export class WatcherAI {
     const tx = this.target.x, ty = this.target.y - 26;
     const dx = tx - this.reticle.x, dy = ty - this.reticle.y;
     const d = Math.hypot(dx, dy);
-    const step = W.reticleSpeed * dt;
+    const step = W.reticleSpeed * this.aggro * dt;
     if (d > step) {
       this.reticle.x += (dx / d) * step;
       this.reticle.y += (dy / d) * step;
@@ -66,7 +70,7 @@ export class WatcherAI {
       // Dwell to build a lock, but only if still reads suspicious enough.
       const score = this._score(this.target);
       if (score >= W.accuseThreshold && this.cooldown === 0) {
-        this.reticle.lock += dt / W.lockTime;
+        this.reticle.lock += (dt * this.aggro) / W.lockTime;
         if (ctx.audio && !this._lockBeeped && this.reticle.lock > 0.35) { ctx.audio.reticleLock(); this._lockBeeped = true; }
         if (this.reticle.lock >= 1) {
           this._commit(onAccuse, ctx);

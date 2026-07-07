@@ -28,11 +28,14 @@ export class Hud {
     if (s.score != null) this._score(ctx, s, t, scale, mob);
     if (s.canPause) this._pauseBtn(ctx, vw, scale, mob);
 
+    this._exposedBottom = 0;
     if (s.role === 'watcher') {
       this._fakersLeft(ctx, vw, s, t, scale, mob);
+      if (s.intel) this._wanted(ctx, vw, s, t, scale, mob);
       this._watchHint(ctx, vw, vh, s, t, scale);
     } else {
       this._status(ctx, vw, s, t, scale, mob);
+      if (s.intel) this._exposed(ctx, s, t, scale, mob);
       if (!s.spectating) {
         this._actionBar(ctx, vw, vh, s, t, scale);
         this._sync(ctx, vh, s, t, scale, mob);
@@ -48,6 +51,99 @@ export class Hud {
     if (s.interlude) this._interlude(ctx, vw, vh, s, t, scale);
 
     ctx.restore();
+  }
+
+  // WANTED card (you are the Watcher): a silhouette that fills in with the
+  // target's real outfit as clues reveal — hunt THAT person, not "anyone".
+  _wanted(ctx, vw, s, t, scale, mob) {
+    const I = s.intel, a = I.appearance;
+    const w = (mob ? 116 : 148) * scale, h = (mob ? 150 : 186) * scale;
+    const x = vw - w - (mob ? 10 : 16 * scale);
+    const y = mob ? this._bannerBottom + 104 * scale : 128 * scale;
+    this._panel(ctx, x, y, w, h, 10, PALETTE.red);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = PALETTE.red; ctx.font = `900 ${13 * scale}px "Arial Black", Arial`;
+    ctx.fillText(t.wanted, x + w / 2, y + 18 * scale);
+
+    // figure
+    const cx = x + w / 2, fy = y + 30 * scale, u = (mob ? 5.2 : 6.4) * scale; // unit
+    const UNK = '#454c57';
+    const rev = (i) => i < I.level;
+    // hat (clue 1)
+    if (rev(1) && a.hat) {
+      ctx.fillStyle = a.hat;
+      ctx.fillRect(cx - 2.6 * u, fy + 0.6 * u, 5.2 * u, 0.7 * u);
+      ctx.fillRect(cx - 1.7 * u, fy - 0.8 * u, 3.4 * u, 1.5 * u);
+    } else {
+      ctx.fillStyle = rev(1) ? 'transparent' : UNK;
+      if (!rev(1)) ctx.fillRect(cx - 1.9 * u, fy - 0.6 * u, 3.8 * u, 1.2 * u);
+    }
+    // head + hair
+    ctx.fillStyle = a.hair; ctx.fillRect(cx - 1.6 * u, fy + 1.2 * u, 3.2 * u, 0.9 * u);
+    ctx.fillStyle = a.skin; ctx.fillRect(cx - 1.5 * u, fy + 1.9 * u, 3 * u, 2.3 * u);
+    // glasses (clue 4)
+    if (rev(3) && a.glasses) { ctx.fillStyle = '#20242b'; ctx.fillRect(cx - 1.6 * u, fy + 2.5 * u, 3.2 * u, 0.6 * u); }
+    // torso (clue 0 = top color)
+    ctx.fillStyle = rev(0) ? a.clothing : UNK;
+    ctx.fillRect(cx - 2.1 * u, fy + 4.4 * u, 4.2 * u, 3.6 * u);
+    // bag (clue 3)
+    if (rev(2) && a.bag) { ctx.fillStyle = a.bag; ctx.fillRect(cx - 3.2 * u, fy + 5.2 * u, 1 * u, 2 * u); }
+    else if (!rev(2)) { ctx.fillStyle = UNK; ctx.fillRect(cx - 3.2 * u, fy + 5.2 * u, 1 * u, 2 * u); }
+    // legs (clue 5 = pants)
+    ctx.fillStyle = rev(4) ? a.pants : UNK;
+    ctx.fillRect(cx - 1.9 * u, fy + 8.1 * u, 1.5 * u, 3.4 * u);
+    ctx.fillRect(cx + 0.4 * u, fy + 8.1 * u, 1.5 * u, 3.4 * u);
+
+    // clue count + next-clue progress
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${9.5 * scale}px system-ui`;
+    ctx.fillText(`${Math.min(I.level, I.max)}/${I.max}`, cx, y + h - 18 * scale);
+    const bw = w - 28 * scale;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, x + 14 * scale, y + h - 12 * scale, bw, 4 * scale, 2); ctx.fill();
+    ctx.fillStyle = PALETTE.red; rrect(ctx, x + 14 * scale, y + h - 12 * scale, bw * Math.min(1, I.frac), 4 * scale, 2); ctx.fill();
+  }
+
+  // THEY-KNOW meter (you are a Faker): what the Watcher already knows about
+  // YOUR outfit. Full bar = fully identified — run.
+  _exposed(ctx, s, t, scale, mob) {
+    const I = s.intel;
+    const w = (mob ? 132 : 176) * scale, h = 52 * scale;
+    const x = mob ? 10 : 16 * scale;
+    const y = mob ? this._bannerBottom + 92 * scale : 122 * scale;
+    const full = I.level >= I.max;
+    this._panel(ctx, x, y, w, h, 8, full ? PALETTE.red : null);
+    this._exposedBottom = y + h;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = full ? PALETTE.red : PALETTE.gray; ctx.font = `700 ${9.5 * scale}px system-ui`;
+    ctx.fillText(t.exposed.toUpperCase(), x + 12 * scale, y + 15 * scale);
+    // 5 clue slots
+    const slot = (w - 24 * scale) / 5;
+    const labels = [t.clueTop, t.clueHat, t.clueBag, t.clueGlasses, t.cluePants];
+    for (let i = 0; i < 5; i++) {
+      const sx = x + 12 * scale + i * slot, sy = y + 21 * scale, sw = slot - 4 * scale, sh = 14 * scale;
+      const c = I.clues[i], rev = i < I.level;
+      if (!rev) {
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'; rrect(ctx, sx, sy, sw, sh, 3); ctx.fill();
+        ctx.fillStyle = 'rgba(154,163,173,0.5)'; ctx.font = `700 ${9 * scale}px system-ui`;
+        ctx.textAlign = 'center'; ctx.fillText('?', sx + sw / 2, sy + 10.5 * scale); ctx.textAlign = 'left';
+        continue;
+      }
+      if (c.color && (c.k === 'top' || c.k === 'pants' || c.has)) {
+        ctx.fillStyle = c.color; rrect(ctx, sx, sy, sw, sh, 3); ctx.fill();
+        ctx.strokeStyle = PALETTE.amber; ctx.lineWidth = 1.2; rrect(ctx, sx, sy, sw, sh, 3); ctx.stroke();
+      } else {
+        ctx.fillStyle = 'rgba(255,193,7,0.16)'; rrect(ctx, sx, sy, sw, sh, 3); ctx.fill();
+        ctx.strokeStyle = PALETTE.amber; ctx.lineWidth = 1.2; rrect(ctx, sx, sy, sw, sh, 3); ctx.stroke();
+        ctx.fillStyle = PALETTE.amber; ctx.font = `700 ${7.5 * scale}px system-ui`;
+        ctx.textAlign = 'center';
+        ctx.fillText(c.has === false ? '✕' : labels[i].slice(0, 3), sx + sw / 2, sy + 10 * scale);
+        ctx.textAlign = 'left';
+      }
+    }
+    // next-clue progress
+    const bw = w - 24 * scale;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, x + 12 * scale, y + h - 9 * scale, bw, 3.5 * scale, 2); ctx.fill();
+    ctx.fillStyle = full ? PALETTE.red : PALETTE.amber;
+    rrect(ctx, x + 12 * scale, y + h - 9 * scale, bw * Math.min(1, I.frac), 3.5 * scale, 2); ctx.fill();
   }
 
   _joystick(ctx, joy) {
@@ -190,7 +286,8 @@ export class Hud {
   _missions(ctx, vw, s, t, scale) {
     const rows = s.missions;
     const w = Math.min(240 * scale, vw * 0.56), rowH = 26 * scale, h = 42 * scale + rows.length * rowH;
-    const x = this.mob ? 10 : 16 * scale, y = this.mob ? this._bannerBottom + 94 * scale : 124 * scale;
+    const x = this.mob ? 10 : 16 * scale;
+    const y = this._exposedBottom ? this._exposedBottom + 8 * scale : (this.mob ? this._bannerBottom + 94 * scale : 124 * scale);
     this._panel(ctx, x, y, w, h);
     ctx.textAlign = 'left';
     ctx.fillStyle = PALETTE.amber; ctx.font = `800 ${11 * scale}px system-ui`;

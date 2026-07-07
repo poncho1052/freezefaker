@@ -127,7 +127,30 @@ const TUNING = {
     rankS: 1500, rankA: 1000, rankB: 550,
   },
   mission: { holdSeconds: 2.6 },  // red-light seconds to hold a task pose in-zone
+
+  // Progressive outfit intel ("Where's Wally" style). The Watcher's WANTED
+  // card fills in over time; in Faker modes the same clock exposes YOU to the
+  // AI Watcher — reach the gate before you're fully identified.
+  intel: {
+    maxClues: 5,
+    aiBias: 9,          // AI Watcher's perceived-suspicion bonus per revealed clue (player only)
+  },
 };
+
+// Difficulty presets (settings.difficulty). Interval = seconds per clue.
+const DIFFICULTY = {
+  casual:  { intelInterval: 34, aggro: 0.85, marksBonus: 1 },
+  normal:  { intelInterval: 22, aggro: 1.0,  marksBonus: 0 },
+  tense:   { intelInterval: 14, aggro: 1.2,  marksBonus: -1 },
+};
+
+// Round twists: one applies from round 2 on, announced at round start.
+const TWISTS = [
+  { id: 'rush',   npcExtra: 16,  labelEN: 'RUSH HOUR — bigger crowd', labelJA: 'ラッシュアワー — 群衆が増えた' },
+  { id: 'longred', redBonus: 1.6, labelEN: 'LONG RED — longer freezes', labelJA: 'ロングレッド — 赤が長い' },
+  { id: 'sprint', roundSec: 100, labelEN: 'SPRINT — short round', labelJA: 'スプリント — 時間半分' },
+  { id: 'eagle',  aggro: 1.25,   labelEN: 'EAGLE EYE — sharper Watcher', labelJA: '鷹の目 — Watcher強化' },
+];
 
 // Blend Task objectives (Mission mode). Every task must be HELD through Red
 // Light in its zone (positioning before the freeze is the challenge).
@@ -198,6 +221,13 @@ const I18N = {
     pPerfect: 'PERFECT FREEZE', pClose: 'CLOSE CALL!', pMission: 'TASK DONE', pMate: 'TEAMMATE ESCAPED',
     pGoal: 'ESCAPED!', pSurvive: 'SURVIVED THE ROUND', pCatch: 'CAUGHT ONE', pMiss: 'FALSE ACCUSE',
     matchWin: 'MATCH WON', matchLose: 'MATCH LOST', holdOnRed: 'Hold it through RED',
+    // intel / difficulty / twists
+    wanted: 'WANTED', exposed: 'THEY KNOW', nextClue: 'next clue',
+    clueTop: 'Jacket', clueHat: 'Hat', clueBag: 'Bag', clueGlasses: 'Glasses', cluePants: 'Pants',
+    clueYes: 'yes', clueNo: 'none',
+    difficulty: 'Difficulty', diffCasual: 'Casual', diffNormal: 'Normal', diffTense: 'Tense',
+    diffHint: 'How fast outfit intel is revealed',
+    fullyExposed: 'FULLY EXPOSED — RUN!', pWanted: 'WANTED DOWN',
     // online
     online: 'Play Online', onlineTitle: 'Play with Friends',
     yourName: 'Your name', createRoom: 'Create Room', roomCodePh: 'Room code', joinRoom: 'Join',
@@ -269,6 +299,13 @@ const I18N = {
     pPerfect: 'パーフェクト静止', pClose: '間一髪！', pMission: 'ミッション達成', pMate: '仲間が脱出',
     pGoal: '脱出成功！', pSurvive: 'ラウンド生存', pCatch: '確保', pMiss: '誤指摘',
     matchWin: 'マッチ勝利', matchLose: 'マッチ敗北', holdOnRed: '赤の間キープしろ',
+    // intel / difficulty / twists
+    wanted: 'WANTED', exposed: 'バレてる情報', nextClue: '次の情報',
+    clueTop: '上着', clueHat: '帽子', clueBag: 'カバン', clueGlasses: 'メガネ', cluePants: 'ズボン',
+    clueYes: 'あり', clueNo: 'なし',
+    difficulty: '難易度', diffCasual: 'かんたん', diffNormal: 'ふつう', diffTense: 'ヒリヒリ',
+    diffHint: '服装情報が明かされる速さ',
+    fullyExposed: '完全に特定された — 走れ！', pWanted: '指名手配を確保',
     // online
     online: 'オンライン対戦', onlineTitle: '友達と遊ぶ',
     yourName: '名前', createRoom: 'ルームを作る', roomCodePh: 'ルームコード', joinRoom: '参加',
@@ -813,9 +850,10 @@ const __lights = (() => {
 // Green / Red Light cycle with a short warning (dev spec §5).
 
 class LightCycle {
-  constructor(rng, onPhase) {
+  constructor(rng, onPhase, mod = {}) {
     this.rng = rng;
     this.onPhase = onPhase || (() => {});
+    this.mod = mod;                    // { redBonus } per-round twist
     this.phase = 'green';
     this.timeLeft = TUNING.light.firstGreen;
     this.phaseDuration = this.timeLeft;
@@ -835,7 +873,7 @@ class LightCycle {
     if (this.phase === 'green') {
       this._set('warning', L.warning);
     } else if (this.phase === 'warning') {
-      this._set('red', this.rng.range(L.redMin, L.redMax));
+      this._set('red', this.rng.range(L.redMin, L.redMax) + (this.mod.redBonus || 0));
     } else { // red -> green
       this.cycles++;
       this._set('green', this.rng.range(L.greenMin, L.greenMax));

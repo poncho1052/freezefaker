@@ -83,6 +83,12 @@ export class Renderer3D {
   }
 
   addShake(a) { this.shake = Math.max(this.shake, a); }
+
+  // Snap the camera to a world point instantly (round-intro flyover start).
+  jumpTo(x, y) {
+    this.camPos.set(x, 360, y + 285);
+    this.camAim.set(x, 22, y - 75);
+  }
   punchZoom(x, y, amt, time) { this.punchT = time; this.punchDur = time; this.punchAmt = amt; this.punchFocus = { x, y }; }
 
   updateCamera(focus, dt = 0.016, viewW = 1240) {

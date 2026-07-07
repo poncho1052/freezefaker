@@ -264,6 +264,12 @@ export class Ui {
             </div>
           </div>
           <div class="row">
+            <div><div class="label" data-i="difficulty"></div><div class="hint" data-i="diffHint"></div></div>
+            <div class="seg" data-seg="diff">
+              <button data-val="casual" data-i="diffCasual"></button><button data-val="normal" data-i="diffNormal"></button><button data-val="tense" data-i="diffTense"></button>
+            </div>
+          </div>
+          <div class="row">
             <div><div class="label" data-i="volume"></div></div>
             <input type="range" min="0" max="1" step="0.05" data-ctl="volume" />
           </div>
@@ -288,6 +294,9 @@ export class Ui {
     });
     el.querySelectorAll('[data-seg=hud] button').forEach((b) => b.onclick = () => {
       this.settings.hudScale = parseFloat(b.dataset.val); this.cb.settings?.(); this._syncControls();
+    });
+    el.querySelectorAll('[data-seg=diff] button').forEach((b) => b.onclick = () => {
+      this.settings.difficulty = b.dataset.val; this.cb.settings?.(); this._syncControls();
     });
     const vol = el.querySelector('[data-ctl=volume]');
     vol.oninput = () => { this.settings.volume = parseFloat(vol.value); this.cb.settings?.(); };
@@ -357,6 +366,7 @@ export class Ui {
     if (!set) return;
     set.querySelectorAll('[data-seg=lang] button').forEach((b) => b.classList.toggle('on', b.dataset.val === s.lang));
     set.querySelectorAll('[data-seg=hud] button').forEach((b) => b.classList.toggle('on', parseFloat(b.dataset.val) === s.hudScale));
+    set.querySelectorAll('[data-seg=diff] button').forEach((b) => b.classList.toggle('on', (s.difficulty || 'normal') === b.dataset.val));
     const vol = set.querySelector('[data-ctl=volume]'); if (vol) vol.value = s.volume;
     const cb = set.querySelector('[data-ctl=colorblind]'); if (cb) { cb.classList.toggle('on', s.colorblind); cb.setAttribute('aria-checked', s.colorblind); }
   }

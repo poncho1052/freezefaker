@@ -6,6 +6,7 @@ const DEFAULTS = {
   volume: 0.7,
   colorblind: false,
   hudScale: 1,
+  difficulty: 'normal',
 };
 
 export function loadSettings() {

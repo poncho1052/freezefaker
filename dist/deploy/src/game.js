@@ -1,6 +1,7 @@
 // Game orchestration: modes (Classic / Blend Task / Watcher), state machine,
 // main loop, and glue between world, crowd, systems, HUD and UI.
-import { TUNING, ACTIONS, MISSIONS, PALETTE, I18N } from './config.js';
+import { TUNING, ACTIONS, MISSIONS, PALETTE, I18N, DIFFICULTY, TWISTS } from './config.js';
+import { cluesFor, clueText } from './intel.js';
 import { makeRng } from './rng.js';
 import { createWorld } from './world.js';
 import { createRenderer } from './renderer3d.js';
@@ -78,6 +79,10 @@ export class Game {
     this.world = createWorld();
     if (!this.renderer) this.renderer = createRenderer(this.canvas, this.overlay, this.world);
 
+    this.diff = DIFFICULTY[this.settings.difficulty] || DIFFICULTY.normal;
+    // Round twist from round 2 on, so repeats stay fresh.
+    this.twist = (!tutorial && this.roundNum >= 2) ? rng.pick(TWISTS) : null;
+
     this.chars = [];
     const spots = this.world.spawnPoints.slice();
     shuffle(spots, rng);
@@ -93,22 +98,28 @@ export class Game {
     const fakerCount = this.role === 'watcher' ? 5 : (tutorial ? 2 : 4);
     for (let i = 0; i < fakerCount; i++) this.chars.push(makeFaker(rng, this.world, spots.pop() || rng.pick(this.world.spawnPoints), false));
 
-    const npcCount = tutorial ? 34 : 48;
+    const npcCount = (tutorial ? 34 : 48) + (this.twist?.npcExtra || 0);
     for (let i = 0; i < npcCount; i++) {
       const wp = rng.pick(this.world.waypoints);
       this.chars.push(makeNpc(rng, this.world, { x: wp.x + rng.range(-40, 40), y: wp.y + rng.range(-40, 40) }));
     }
 
-    this.lights = new LightCycle(rng, (phase, prev) => this._onPhase(phase, prev));
+    this.lights = new LightCycle(rng, (phase, prev) => this._onPhase(phase, prev), { redBonus: this.twist?.redBonus || 0 });
 
+    const aggro = this.diff.aggro * (this.twist?.aggro || 1);
     if (this.role === 'faker') {
-      this.watcher = new WatcherAI(rng);       // AI opponent
-      if (tutorial) this.watcher.__lenient = 18;
+      this.watcher = new WatcherAI(rng, { aggro: tutorial ? 0.7 : aggro, marksBonus: this.diff.marksBonus });
       this.watch = null;
     } else {
       this.watcher = null;
-      this.watch = { marks: TUNING.watch.marks, reticle: { x: this.world.w / 2, y: this.world.h / 2 }, hover: null, pins: new Set(), fakersTotal: fakerCount };
+      this.watch = { marks: TUNING.watch.marks + this.diff.marksBonus, reticle: { x: this.world.w / 2, y: this.world.h / 2 }, hover: null, pins: new Set(), fakersTotal: fakerCount };
     }
+
+    // Progressive outfit intel: about YOU in Faker modes, about the current
+    // WANTED faker in Watcher mode. One clue is known from the start.
+    this.intel = { level: 1, t: this.diff.intelInterval, target: null };
+    if (this.role === 'watcher') this._pickWanted();
+    else { this.intel.target = this.player; this.watcher.intelBias = TUNING.intel.aiBias; }
 
     // Missions (Blend Task).
     if (this.mode === 'mission') {
@@ -116,7 +127,7 @@ export class Game {
       this.missions = pool.slice(0, 3).map((m) => ({ ...m, done: false }));
     } else this.missions = null;
 
-    this.roundLeft = TUNING.round.seconds;
+    this.roundLeft = this.twist?.roundSec || TUNING.round.seconds;
     this.survival = 0;
     this.spawnY = this.player ? this.player.y : this.world.h - 90;
     if (this.roundNum === 1) this.stats = { actions: 0, syncs: 0, correct: 0, false: 0 };
@@ -131,9 +142,44 @@ export class Game {
     this.state = 'playing';
     this.ui.hideAll();
     this.announce(this.T().greenSub);
-    // Make the objective unmistakable from second zero.
-    if (this.role === 'faker') this._banner(this.mode === 'mission' ? 'bMission' : 'bGoal', PALETTE.green, 3.2);
+    // First round: a short camera flyover from the gate back to you, so the
+    // objective is physically obvious. Later rounds announce their twist.
+    this.intro = (this.role === 'faker' && this.roundNum === 1) ? 2.3 : 0;
+    if (this.intro > 0 && this.renderer.jumpTo) this.renderer.jumpTo(this.world.goal.x, this.world.goal.y + 60);
+    this.bannerText = null;
+    if (this.twist) this._bannerLit(this.settings.lang === 'ja' ? this.twist.labelJA : this.twist.labelEN, PALETTE.amber, 3.0);
+    else if (this.role === 'faker') this._banner(this.mode === 'mission' ? 'bMission' : 'bGoal', PALETTE.green, 3.2);
   }
+
+  _pickWanted() {
+    const alive = this.chars.filter((c) => c.kind === 'faker' && !c.eliminated && !c.goalReached);
+    this.intel.target = alive.length ? this.rng.pick(alive) : null;
+  }
+
+  // Outfit intel reveals over time (difficulty sets the pace).
+  _tickIntel(dt) {
+    const I = this.intel;
+    if (this.role === 'watcher') {
+      if (!I.target || I.target.eliminated || I.target.goalReached) this._pickWanted();
+    }
+    if (!I.target || I.level >= TUNING.intel.maxClues) return;
+    I.t -= dt;
+    if (I.t > 0) return;
+    I.level++;
+    I.t = this.diff.intelInterval;
+    const t = this.T();
+    if (this.role === 'faker') {
+      this.watcher.intelBias = I.level * TUNING.intel.aiBias;
+      const clue = cluesFor(this.player.appearance)[I.level - 1];
+      this.popups.push({ text: `${t.exposed}: ${clueText(clue, t, this.settings.lang)}`, color: PALETTE.amber, t: 2.0, max: 2.0 });
+      this.audio.redWarning();
+      if (I.level >= TUNING.intel.maxClues) this._bannerLit(t.fullyExposed, PALETTE.red, 2.2);
+    } else {
+      this.audio.uiSelect();
+    }
+  }
+
+  _bannerLit(text, color, t = 1.1) { this.bannerKey = '__lit'; this.bannerText = text; this.bannerColor = color; this.bannerT = t; this._bannerMax = t; }
 
   // Score popup + points, shown the moment something good/bad happens.
   addScore(pts, labelKey, color) {
@@ -265,6 +311,18 @@ export class Game {
       return;
     }
 
+    // Round-1 intro: the camera glides from the gate back to you.
+    if (this.intro > 0) {
+      this.intro -= raw;
+      this._stepCrowd(dt, ctx);
+      const u = 1 - Math.max(0, this.intro) / 2.3;
+      const e = u * u * (3 - 2 * u); // smoothstep
+      const g = this.world.goal, p = this.player;
+      this.renderer.updateCamera({ x: g.x + (p.x - g.x) * e, y: g.y + 60 + (p.y - g.y - 60) * e }, dt, 1240, 820);
+      return;
+    }
+
+    this._tickIntel(dt);
     this.lights.update(dt);
     this.roundLeft -= dt;
     if (!this.player || !this.player.eliminated) this.survival += dt;
@@ -491,7 +549,11 @@ export class Game {
     this.audio.accuse();
     target.accused = 1.0; target._accuseCorrect = correct;
     this._dramatize(target, correct, false);
-    if (correct) { this.stats.correct++; this.addScore(TUNING.score.watcherCatch, 'pCatch'); }
+    if (correct) {
+      this.stats.correct++;
+      const wanted = this.intel.target === target;
+      this.addScore(TUNING.score.watcherCatch + (wanted ? 100 : 0), wanted ? 'pWanted' : 'pCatch');
+    }
     else { this.stats.false++; this.watch.marks--; this.audio.falseAccuse(); this.addScore(TUNING.score.watcherMiss, 'pMiss'); }
     this.watch.pins.delete(target.id);
   }
@@ -675,7 +737,7 @@ export class Game {
       tells: { facing: t.tellFacing, iso: t.tellIso, pose: t.tellPose, move: t.tellMove, ok: t.tellOk },
       threat: this.role === 'faker' ? this.threat : 0,
       fxFlash: { col: this.fxFlashCol, a: this.fxFlashA },
-      banner: this.bannerT > 0 && this.bannerKey ? { text: t[this.bannerKey] || '', color: this.bannerColor, alpha: Math.min(1, this.bannerT) } : null,
+      banner: this.bannerT > 0 && this.bannerKey ? { text: this.bannerKey === '__lit' ? (this.bannerText || '') : (t[this.bannerKey] || ''), color: this.bannerColor, alpha: Math.min(1, this.bannerT) } : null,
       goalMarker: this._goalMarker(t),
     };
     this.renderer.render(scene);
@@ -713,6 +775,12 @@ export class Game {
       } : null,
       teamFakers: t.teamFakers, teamWatcher: t.teamWatcher, scoreWord: t.scoreWord,
       joy: this.input.joy, canPause: this.input.hasTouch,
+      intel: this.intel.target ? {
+        level: this.intel.level, max: TUNING.intel.maxClues,
+        frac: this.intel.level >= TUNING.intel.maxClues ? 1 : 1 - this.intel.t / this.diff.intelInterval,
+        clues: cluesFor(this.intel.target.appearance),
+        appearance: this.intel.target.appearance,
+      } : null,
     };
     let s;
     if (this.role === 'watcher') {

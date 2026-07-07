@@ -2,9 +2,10 @@
 import { TUNING } from './config.js';
 
 export class LightCycle {
-  constructor(rng, onPhase) {
+  constructor(rng, onPhase, mod = {}) {
     this.rng = rng;
     this.onPhase = onPhase || (() => {});
+    this.mod = mod;                    // { redBonus } per-round twist
     this.phase = 'green';
     this.timeLeft = TUNING.light.firstGreen;
     this.phaseDuration = this.timeLeft;
@@ -24,7 +25,7 @@ export class LightCycle {
     if (this.phase === 'green') {
       this._set('warning', L.warning);
     } else if (this.phase === 'warning') {
-      this._set('red', this.rng.range(L.redMin, L.redMax));
+      this._set('red', this.rng.range(L.redMin, L.redMax) + (this.mod.redBonus || 0));
     } else { // red -> green
       this.cycles++;
       this._set('green', this.rng.range(L.greenMin, L.greenMax));
