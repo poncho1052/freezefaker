@@ -3,7 +3,7 @@
 import { TUNING, ACTIONS, MISSIONS, PALETTE, I18N } from './config.js';
 import { makeRng } from './rng.js';
 import { createWorld } from './world.js';
-import { Renderer } from './renderer.js';
+import { createRenderer } from './renderer3d.js';
 import { Hud } from './hud.js';
 import {
   makeNpc, makeFaker, updateNpc, updateFakerAI, integrate, separate, scheduleResume,
@@ -16,8 +16,9 @@ import { WatcherAI } from './watcher.js';
 const ACTION_POSE = { phone: 'phone', shop: 'shop', vending: 'vending', sit: 'sit', sign: 'sign', look: 'look' };
 
 export class Game {
-  constructor({ canvas, input, audio, ui, settings, live }) {
+  constructor({ canvas, overlay, input, audio, ui, settings, live }) {
     this.canvas = canvas;
+    this.overlay = overlay;
     this.input = input;
     this.audio = audio;
     this.ui = ui;
@@ -58,7 +59,7 @@ export class Game {
     this.tutorial = tutorial;
     this.role = this.mode === 'watch' ? 'watcher' : 'faker';
     this.world = createWorld();
-    this.renderer = new Renderer(this.canvas, this.world);
+    if (!this.renderer) this.renderer = createRenderer(this.canvas, this.overlay, this.world);
 
     this.chars = [];
     const spots = this.world.spawnPoints.slice();

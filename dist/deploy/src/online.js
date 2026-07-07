@@ -3,7 +3,7 @@
 // reticle and accuses. Reuses Renderer + Hud so the look matches offline play.
 import { TUNING, ACTIONS, PALETTE, I18N } from './config.js';
 import { createWorld } from './world.js';
-import { Renderer } from './renderer.js';
+import { createRenderer } from './renderer3d.js';
 import { Hud } from './hud.js';
 import { integrate } from './characters.js';
 import { crowdBaseline, evaluateFreeze } from './conformity.js';
@@ -12,12 +12,12 @@ import { updatePlayerSuspicion } from './suspicion.js';
 const ACTION_POSE = { phone: 'phone', shop: 'shop', vending: 'vending', sit: 'sit', sign: 'sign', look: 'look' };
 
 export class OnlineMatch {
-  constructor({ canvas, input, audio, ui, settings, net, role, youId, onEnd }) {
+  constructor({ canvas, overlay, input, audio, ui, settings, net, role, youId, onEnd, renderer }) {
     this.canvas = canvas; this.input = input; this.audio = audio; this.ui = ui;
     this.settings = settings; this.net = net; this.role = role; this.youId = youId; this.onEnd = onEnd;
     this.hud = new Hud();
     this.world = createWorld();
-    this.renderer = new Renderer(canvas, this.world);
+    this.renderer = renderer || createRenderer(canvas, overlay, this.world);
     this.chars = new Map();
     this.you = null;
     this.time = 0; this.flash = 0;

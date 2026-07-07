@@ -69,6 +69,10 @@ fs.mkdirSync(path.join(OUT, 'assets'), { recursive: true });
 for (const f of fs.readdirSync(path.join(ROOT, 'src'))) {
   if (f.endsWith('.js')) fs.copyFileSync(path.join(ROOT, 'src', f), path.join(OUT, 'src', f));
 }
+fs.mkdirSync(path.join(OUT, 'vendor'), { recursive: true });
+for (const f of fs.readdirSync(path.join(ROOT, 'vendor'))) {
+  fs.copyFileSync(path.join(ROOT, 'vendor', f), path.join(OUT, 'vendor', f));
+}
 if (fs.existsSync(path.join(ROOT, 'assets'))) {
   for (const f of fs.readdirSync(path.join(ROOT, 'assets'))) {
     fs.copyFileSync(path.join(ROOT, 'assets', f), path.join(OUT, 'assets', f));

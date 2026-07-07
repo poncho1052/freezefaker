@@ -8,6 +8,7 @@ import { Net } from './net.js';
 import { OnlineMatch } from './online.js';
 
 const canvas = document.getElementById('stage');
+const overlay = document.getElementById('overlay');
 const screens = document.getElementById('screens');
 const live = document.getElementById('live');
 
@@ -17,7 +18,7 @@ const audio = new Audio();
 audio.volume = settings.volume;
 const input = new Input(window);
 const ui = new Ui(screens, settings);
-const game = new Game({ canvas, input, audio, ui, settings, live });
+const game = new Game({ canvas, overlay, input, audio, ui, settings, live });
 game.applySettings();
 
 const persist = () => { saveSettings(settings); game.applySettings(); audio.resume(); };
@@ -48,7 +49,7 @@ async function connect() {
   net.on('joined', (m) => { online.youId = m.id; online.role = m.role; });
   net.on('init', (m) => {
     online.role = m.role;
-    online.match = new OnlineMatch({ canvas, input, audio, ui, settings, net, role: m.role, youId: m.you, onEnd: () => { online.active = false; } });
+    online.match = new OnlineMatch({ canvas, overlay, input, audio, ui, settings, net, role: m.role, youId: m.you, onEnd: () => { online.active = false; }, renderer: game.renderer });
     online.match._init(m);
     online.active = true;
     game.enterOnline(online.match);
