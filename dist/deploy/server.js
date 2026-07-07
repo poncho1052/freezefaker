@@ -116,15 +116,26 @@ const TUNING = {
     pickRadius: 46,         // px from cursor to select a character
     viewW: 1720, viewH: 1080,
   },
+
+  // Match structure + scoring: rounds give every catch/escape a consequence,
+  // score popups give moment-to-moment 達成感.
+  match: { winsNeeded: 2, interlude: 3.4 },
+  score: {
+    goal: 500, timeSurvive: 200, perfectFreeze: 75, closeCall: 150,
+    mission: 250, mateEscape: 100,
+    watcherCatch: 200, watcherMiss: -100, watcherRound: 150,
+    rankS: 1500, rankA: 1000, rankB: 550,
+  },
+  mission: { holdSeconds: 2.6 },  // red-light seconds to hold a task pose in-zone
 };
 
-// Blend Task objectives (Mission mode). `ctx` matches a disguise action; `red`
-// tasks require standing in the zone during a Red Light.
+// Blend Task objectives (Mission mode). Every task must be HELD through Red
+// Light in its zone (positioning before the freeze is the challenge).
 const MISSIONS = [
-  { id: 'shop',    ctx: 'shop',    labelEN: 'Look at a shop window', labelJA: 'ショーウィンドウを見る' },
-  { id: 'vending', ctx: 'vending', labelEN: 'Check a vending machine', labelJA: '自販機をチェック' },
-  { id: 'bench',   ctx: 'bench',   labelEN: 'Sit on a bench', labelJA: 'ベンチに座る' },
-  { id: 'cross',   ctx: 'sign', red: true, labelEN: 'Wait at the crossing on Red', labelJA: '赤の間、横断歩道で待つ' },
+  { id: 'shop',    ctx: 'shop',    pose: 'shop',    labelEN: 'Watch a shop window on RED', labelJA: '赤の間、ショーウィンドウを見続けろ' },
+  { id: 'vending', ctx: 'vending', pose: 'vending', labelEN: 'Face a vending machine on RED', labelJA: '赤の間、自販機の前に立て' },
+  { id: 'bench',   ctx: 'bench',   pose: 'sit',     labelEN: 'Sit on a bench through RED', labelJA: '赤の間、ベンチに座り続けろ' },
+  { id: 'cross',   ctx: 'sign',    pose: null,      labelEN: 'Wait at the crossing on RED', labelJA: '赤の間、横断歩道で待て' },
 ];
 
 // Disguise / mimic actions. `ctx` is the interaction-zone tag that makes it valid.
@@ -179,6 +190,14 @@ const I18N = {
     penaltyT: 'YOU LOOK HUMAN', penaltySub: 'Match the crowd’s stance',
     bSpotted: 'SPOTTED!', bClose: 'CLOSE!', bCaught: 'CAUGHT', bGotcha: 'GOTCHA!', bSafe: 'SURVIVED', bMiss: 'MISFIRE',
     bGoal: '▲ REACH THE GATE', bMission: 'DO YOUR TASKS, THEN THE GATE', goalWord: 'GOAL',
+    // teams / rounds / score
+    teamFakers: 'FAKERS', teamWatcher: 'WATCHER', roundWord: 'ROUND',
+    bRoundWin: 'ROUND WON', bRoundLose: 'ROUND LOST', bTeamOn: 'YOUR TEAM PLAYS ON',
+    bMatchPoint: 'MATCH POINT', spectating: 'CAUGHT — watching your team',
+    scoreWord: 'SCORE', rankWord: 'RANK', newRecord: 'NEW RECORD!', bestWord: 'BEST',
+    pPerfect: 'PERFECT FREEZE', pClose: 'CLOSE CALL!', pMission: 'TASK DONE', pMate: 'TEAMMATE ESCAPED',
+    pGoal: 'ESCAPED!', pSurvive: 'SURVIVED THE ROUND', pCatch: 'CAUGHT ONE', pMiss: 'FALSE ACCUSE',
+    matchWin: 'MATCH WON', matchLose: 'MATCH LOST', holdOnRed: 'Hold it through RED',
     // online
     online: 'Play Online', onlineTitle: 'Play with Friends',
     yourName: 'Your name', createRoom: 'Create Room', roomCodePh: 'Room code', joinRoom: 'Join',
@@ -242,6 +261,14 @@ const I18N = {
     penaltyT: '人間っぽい', penaltySub: '群衆と同じ姿勢に',
     bSpotted: '見つかった！', bClose: 'あぶない！', bCaught: '御用', bGotcha: '確保！', bSafe: '逃げ切った', bMiss: '誤指摘',
     bGoal: '▲ 改札にたどり着け！', bMission: 'ミッションをこなして改札へ', goalWord: 'ゴール',
+    // teams / rounds / score
+    teamFakers: 'FAKERS', teamWatcher: 'WATCHER', roundWord: 'ラウンド',
+    bRoundWin: 'ラウンド勝利', bRoundLose: 'ラウンド敗北', bTeamOn: '仲間に託せ',
+    bMatchPoint: 'マッチポイント', spectating: '御用 — チームを観戦中',
+    scoreWord: 'スコア', rankWord: 'ランク', newRecord: '自己ベスト更新！', bestWord: 'ベスト',
+    pPerfect: 'パーフェクト静止', pClose: '間一髪！', pMission: 'ミッション達成', pMate: '仲間が脱出',
+    pGoal: '脱出成功！', pSurvive: 'ラウンド生存', pCatch: '確保', pMiss: '誤指摘',
+    matchWin: 'マッチ勝利', matchLose: 'マッチ敗北', holdOnRed: '赤の間キープしろ',
     // online
     online: 'オンライン対戦', onlineTitle: '友達と遊ぶ',
     yourName: '名前', createRoom: 'ルームを作る', roomCodePh: 'ルームコード', joinRoom: '参加',

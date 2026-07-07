@@ -691,6 +691,9 @@ export class Renderer3D {
       ctx.scale(scale, scale);
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.font = '900 62px system-ui, sans-serif';
+      const bw = ctx.measureText(b.text).width;
+      const fs = Math.min(62, 62 * (this.vw - 90) / Math.max(1, bw));
+      ctx.font = `900 ${fs}px system-ui, sans-serif`;
       ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(14,22,33,0.85)';
       ctx.strokeText(b.text, 0, 0);
       ctx.fillStyle = b.color; ctx.fillText(b.text, 0, 0);

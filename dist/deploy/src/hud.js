@@ -12,19 +12,101 @@ export class Hud {
 
     this._banner(ctx, vw, s, t, scale);
     this._marks(ctx, s, t, scale);
+    if (s.wins) this._matchStrip(ctx, vw, s, t, scale);
+    if (s.score != null) this._score(ctx, s, t, scale);
 
     if (s.role === 'watcher') {
       this._fakersLeft(ctx, vw, s, t, scale);
       this._watchHint(ctx, vw, vh, s, t, scale);
     } else {
       this._status(ctx, vw, s, t, scale);
-      this._actionBar(ctx, vw, vh, s, t, scale);
-      this._sync(ctx, vh, s, t, scale);
-      this._penalty(ctx, vw, vh, s, t, scale);
+      if (!s.spectating) {
+        this._actionBar(ctx, vw, vh, s, t, scale);
+        this._sync(ctx, vh, s, t, scale);
+        this._penalty(ctx, vw, vh, s, t, scale);
+      } else {
+        this._spectate(ctx, vw, vh, s, t, scale);
+      }
       if (s.missions) this._missions(ctx, vw, s, t, scale);
     }
 
+    if (s.popups && s.popups.length) this._popups(ctx, vw, vh, s, scale);
+    if (s.interlude) this._interlude(ctx, vw, vh, s, t, scale);
+
     ctx.restore();
+  }
+
+  // FAKERS ● ●  —  ○ ○ WATCHER round pips beside the countdown box
+  _matchStrip(ctx, vw, s, t, scale) {
+    const y = 92 * scale + 36 * scale + 18 * scale;
+    ctx.font = `800 ${11 * scale}px system-ui`;
+    const pip = (x, on, col) => {
+      ctx.beginPath(); ctx.arc(x, y - 4 * scale, 4.5 * scale, 0, 7);
+      ctx.fillStyle = on ? col : 'rgba(154,163,173,0.3)'; ctx.fill();
+    };
+    const cx = vw / 2;
+    ctx.textAlign = 'right'; ctx.fillStyle = PALETTE.green;
+    ctx.fillText(s.teamFakers, cx - 46 * scale, y);
+    for (let i = 0; i < s.matchTarget; i++) pip(cx - 30 * scale + i * 14 * scale, i < s.wins.fakers, PALETTE.green);
+    ctx.textAlign = 'center'; ctx.fillStyle = PALETTE.gray; ctx.fillText('—', cx + 4 * scale, y);
+    for (let i = 0; i < s.matchTarget; i++) pip(cx + 22 * scale + i * 14 * scale, i < s.wins.watcher, PALETTE.red);
+    ctx.textAlign = 'left'; ctx.fillStyle = PALETTE.red;
+    ctx.fillText(s.teamWatcher, cx + 22 * scale + s.matchTarget * 14 * scale + 4 * scale, y);
+  }
+
+  _score(ctx, s, t, scale) {
+    const w = 176 * scale, h = 34 * scale, x = 16 * scale, y = 82 * scale;
+    this._panel(ctx, x, y, w, h, 8);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${10 * scale}px system-ui`;
+    ctx.fillText(s.scoreWord.toUpperCase(), x + 14 * scale, y + 21 * scale);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = PALETTE.offwhite; ctx.font = `900 ${16 * scale}px "Arial Black", Arial`;
+    ctx.fillText(String(s.score), x + w - 14 * scale, y + 23 * scale);
+  }
+
+  _popups(ctx, vw, vh, s, scale) {
+    ctx.textAlign = 'center';
+    for (let i = 0; i < s.popups.length; i++) {
+      const p = s.popups[i];
+      const a = Math.min(1, p.t / (p.max * 0.4));
+      const rise = (1 - p.t / p.max) * 26 * scale;
+      ctx.globalAlpha = a;
+      ctx.font = `900 ${17 * scale}px "Arial Black", Arial, sans-serif`;
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(14,22,33,0.85)';
+      const y = vh * 0.42 - i * 24 * scale - rise;
+      ctx.strokeText(p.text, vw / 2, y);
+      ctx.fillStyle = p.color; ctx.fillText(p.text, vw / 2, y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  _spectate(ctx, vw, vh, s, t, scale) {
+    const w = 420 * scale, h = 36 * scale, x = vw / 2 - w / 2, y = vh - h - 18 * scale;
+    this._panel(ctx, x, y, w, h, 8, 'rgba(255,193,7,0.6)');
+    ctx.textAlign = 'center';
+    ctx.fillStyle = PALETTE.amber; ctx.font = `800 ${13 * scale}px system-ui`;
+    ctx.fillText(s.spectating, vw / 2, y + 23 * scale);
+  }
+
+  _interlude(ctx, vw, vh, s, t, scale) {
+    const il = s.interlude;
+    ctx.fillStyle = 'rgba(10,15,22,0.5)';
+    ctx.fillRect(0, 0, vw, vh);
+    const w = 380 * scale, h = 150 * scale, x = vw / 2 - w / 2, y = vh / 2 - h / 2 - 20 * scale;
+    this._panel(ctx, x, y, w, h, 14, il.win ? PALETTE.green : PALETTE.red);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = il.win ? PALETTE.green : PALETTE.red;
+    ctx.font = `900 ${26 * scale}px "Arial Black", Arial`;
+    ctx.fillText(il.title, vw / 2, y + 44 * scale);
+    ctx.fillStyle = PALETTE.offwhite; ctx.font = `800 ${20 * scale}px system-ui`;
+    ctx.fillText(il.score, vw / 2, y + 82 * scale);
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${12 * scale}px system-ui`;
+    ctx.fillText(il.next, vw / 2, y + 112 * scale);
+    // next-round progress line
+    const bw = w - 60 * scale;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, x + 30 * scale, y + h - 24 * scale, bw, 6 * scale, 3); ctx.fill();
+    ctx.fillStyle = PALETTE.amber; rrect(ctx, x + 30 * scale, y + h - 24 * scale, bw * (1 - il.frac), 6 * scale, 3); ctx.fill();
   }
 
   _fakersLeft(ctx, vw, s, t, scale) {
@@ -62,21 +144,29 @@ export class Hud {
 
   _missions(ctx, vw, s, t, scale) {
     const rows = s.missions;
-    const w = 230 * scale, rowH = 20 * scale, h = 30 * scale + rows.length * rowH;
-    const x = 16 * scale, y = 84 * scale;
+    const w = 240 * scale, rowH = 26 * scale, h = 42 * scale + rows.length * rowH;
+    const x = 16 * scale, y = 124 * scale;
     this._panel(ctx, x, y, w, h);
     ctx.textAlign = 'left';
     ctx.fillStyle = PALETTE.amber; ctx.font = `800 ${11 * scale}px system-ui`;
     ctx.fillText(s.missionsTitle.toUpperCase(), x + 14 * scale, y + 20 * scale);
+    ctx.fillStyle = PALETTE.gray; ctx.font = `600 ${9 * scale}px system-ui`;
+    ctx.fillText(s.missionsHint || '', x + 14 * scale, y + 33 * scale);
     for (let i = 0; i < rows.length; i++) {
-      const r = rows[i], ry = y + 34 * scale + i * rowH;
-      // checkbox
+      const r = rows[i], ry = y + 48 * scale + i * rowH;
       ctx.strokeStyle = r.done ? PALETTE.green : 'rgba(154,163,173,0.6)'; ctx.lineWidth = 1.5;
       rrect(ctx, x + 14 * scale, ry - 9 * scale, 11 * scale, 11 * scale, 2); ctx.stroke();
       if (r.done) { ctx.strokeStyle = PALETTE.green; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 16 * scale, ry - 3.5 * scale); ctx.lineTo(x + 19 * scale, ry - 0.5 * scale); ctx.lineTo(x + 24 * scale, ry - 7 * scale); ctx.stroke(); }
       ctx.fillStyle = r.done ? PALETTE.green : PALETTE.offwhite;
-      ctx.font = `${r.done ? 600 : 500} ${11 * scale}px system-ui`;
+      ctx.font = `${r.done ? 600 : 500} ${10.5 * scale}px system-ui`;
       ctx.fillText(clip(ctx, r.label, w - 44 * scale), x + 32 * scale, ry);
+      // hold progress bar (fills only during red in the zone)
+      const bw = w - 46 * scale, bx = x + 32 * scale, by = ry + 4 * scale;
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, bx, by, bw, 4 * scale, 2); ctx.fill();
+      if (r.frac > 0) {
+        ctx.fillStyle = r.done ? PALETTE.green : PALETTE.amber;
+        rrect(ctx, bx, by, bw * Math.min(1, r.frac), 4 * scale, 2); ctx.fill();
+      }
     }
   }
 

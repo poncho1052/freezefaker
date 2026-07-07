@@ -22,6 +22,15 @@ export function saveSettings(s) {
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* ignore quota / privacy mode */ }
 }
 
+// Personal best match scores, keyed by mode.
+const BEST_KEY = 'freezefaker.best.v1';
+export function loadBest() {
+  try { return JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch { return {}; }
+}
+export function saveBest(best) {
+  try { localStorage.setItem(BEST_KEY, JSON.stringify(best)); } catch { /* ignore */ }
+}
+
 // Best-effort language default from the browser, only on first ever run.
 export function guessLang() {
   try {

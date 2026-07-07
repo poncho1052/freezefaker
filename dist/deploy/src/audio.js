@@ -105,6 +105,10 @@ export class Audio {
   caught()      { this._env('sawtooth', 300, 0.6, 0.45, { to: 60 }); this._noise(0.4, 0.25, 700, 'lowpass'); }
   falseAccuse() { this._env('square', 200, 0.22, 0.3, { to: 150 }); }
   heartbeat(i = 1) { this._env('sine', 62, 0.15, 0.22 * i, { to: 40 }); setTimeout(() => this._env('sine', 58, 0.13, 0.16 * i, { to: 38 }), 140); }
+  scorePop()    { this._env('triangle', 880, 0.08, 0.2, { to: 1320 }); }
+  missionDone() { [660, 880, 1175].forEach((f, i) => setTimeout(() => this._env('triangle', f, 0.14, 0.26), i * 70)); }
+  roundWin()    { [523, 784, 1047].forEach((f, i) => setTimeout(() => this._env('triangle', f, 0.18, 0.3), i * 90)); }
+  roundLose()   { [392, 311, 233].forEach((f, i) => setTimeout(() => this._env('sawtooth', f, 0.2, 0.26), i * 110)); }
   alertSting()  { this._env('square', 1500, 0.10, 0.22, { to: 950 }); this._noise(0.05, 0.1, 2800, 'highpass'); }
   relief()      { this._env('sine', 680, 0.28, 0.18, { to: 1180 }); this._noise(0.1, 0.05, 1600, 'highpass'); }
   impact()      { this._env('sawtooth', 150, 0.5, 0.5, { to: 40 }); this._noise(0.3, 0.32, 520, 'lowpass'); this._env('sine', 80, 0.4, 0.4, { to: 36 }); }

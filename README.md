@@ -123,6 +123,13 @@ python3 -m http.server 8000      # open http://localhost:8000
 - Three modes: **Classic · Freeze Run**, **Blend Task** (missions), and playable **Watcher · Spot the Human**
 - **Freeze-conformity** core: crowd faces shared attractors on freeze; Fakers judged on facing / pose / spacing
   deviation — with on-screen tells, an expected-facing arrow, and pivot-in-place on Red
+- **Best-of-3 matches with a team**: you and the AI Fakers are one side; the score strip tracks
+  FAKERS – WATCHER round wins. Getting caught doesn't end the round — you spectate while your
+  team plays on, and a teammate slipping through the gate still takes the round.
+- **Score & rank**: PERFECT FREEZE, CLOSE CALL!, TASK DONE, ESCAPED! pop up with points the moment
+  they happen; matches end with a score, an S/A/B/C rank and a saved personal best per mode.
+- **Blend Tasks are held through Red Light**: each task must be performed in its zone while frozen
+  (a progress bar fills only on red) — and completing one steadies your suspicion and resets NPC Sync.
 - **Hunted-tension loop**: when the AI Watcher locks onto you, a red threat vignette closes in with a quickening
   heartbeat and a **SPOTTED!** alert — turn to blend or NPC-Sync to break the lock for a **CLOSE!** relief, or get
   caught in a slow-mo, screen-shaking **GOTCHA** punch-zoom. Decoy catches and your goal run get the same payoff.

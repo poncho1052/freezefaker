@@ -12,6 +12,7 @@ import { LightCycle } from './lights.js';
 import { updatePlayerSuspicion } from './suspicion.js';
 import { crowdBaseline, evaluateFreeze } from './conformity.js';
 import { WatcherAI } from './watcher.js';
+import { loadBest, saveBest } from './store.js';
 
 const ACTION_POSE = { phone: 'phone', shop: 'shop', vending: 'vending', sit: 'sit', sign: 'sign', look: 'look' };
 
@@ -49,15 +50,26 @@ export class Game {
   T() { return I18N[this.settings.lang] || I18N.en; }
 
   // ---------------- lifecycle ----------------
+  // A session is a MATCH: best-of rounds, so every catch/escape moves a score.
   start(opts = {}) {
     const mode = opts.mode || 'classic';
     const tutorial = !!opts.tutorial;
     this.audio.resume();
-    const rng = makeRng();
-    this.rng = rng;
     this.mode = tutorial ? 'classic' : mode;
     this.tutorial = tutorial;
     this.role = this.mode === 'watch' ? 'watcher' : 'faker';
+    this.matchTarget = tutorial ? 1 : (opts.matchTarget || TUNING.match.winsNeeded);
+    this.wins = { fakers: 0, watcher: 0 };
+    this.roundNum = 0;
+    this.score = 0;
+    this._newRound();
+  }
+
+  _newRound() {
+    this.roundNum++;
+    const rng = makeRng();
+    this.rng = rng;
+    const tutorial = this.tutorial;
     this.world = createWorld();
     if (!this.renderer) this.renderer = createRenderer(this.canvas, this.overlay, this.world);
 
@@ -102,9 +114,14 @@ export class Game {
     this.roundLeft = TUNING.round.seconds;
     this.survival = 0;
     this.spawnY = this.player ? this.player.y : this.world.h - 90;
-    this.stats = { actions: 0, syncs: 0, correct: 0, false: 0 };
+    if (this.roundNum === 1) this.stats = { actions: 0, syncs: 0, correct: 0, false: 0 };
     this.tipStage = 0; this.tip = null;
     this.endTimer = 0; this.ending = null; this.reveal = false; this.flash = 0;
+    this.interlude = null;
+    this.followTarget = null;          // spectate camera target after a catch
+    this.popups = [];                  // floating score popups
+    this._redPeakHuman = 0;            // for PERFECT FREEZE detection
+    this._hadThreat = false;           // for CLOSE CALL detection
 
     this.state = 'playing';
     this.ui.hideAll();
@@ -113,16 +130,32 @@ export class Game {
     if (this.role === 'faker') this._banner(this.mode === 'mission' ? 'bMission' : 'bGoal', PALETTE.green, 3.2);
   }
 
+  // Score popup + points, shown the moment something good/bad happens.
+  addScore(pts, labelKey, color) {
+    this.score = Math.max(0, this.score + pts);
+    const t = this.T();
+    this.popups.push({ text: `${t[labelKey] || labelKey}  ${pts >= 0 ? '+' : ''}${pts}`, color: color || (pts >= 0 ? PALETTE.green : PALETTE.red), t: 1.6, max: 1.6 });
+    if (this.popups.length > 4) this.popups.shift();
+    if (pts > 0) this.audio.scorePop();
+  }
+
   pause() { if (this.state !== 'playing') return; this.state = 'paused'; this.ui.show('pause'); }
   resume() { if (this.state !== 'paused') return; this.state = 'playing'; this.ui.hideAll(); this.last = performance.now(); }
   quitToTitle() { this.state = 'menu'; this.ui.show('title'); }
 
   _onPhase(phase, prev) {
     if (phase === 'warning') this.audio.redWarning();
-    else if (phase === 'red') { this.audio.redStart(); this.audio.freezeSnap(); this.flash = 1; this.renderer.addShake(5); this.announce(this.T().redSub); }
-    else if (phase === 'green') {
+    else if (phase === 'red') {
+      this.audio.redStart(); this.audio.freezeSnap(); this.flash = 1; this.renderer.addShake(5);
+      this._redPeakHuman = 0;
+      this.announce(this.T().redSub);
+    } else if (phase === 'green') {
       this.audio.greenStart();
       this.announce(this.T().greenSub);
+      // survived a whole Red Light reading as pure NPC → PERFECT FREEZE
+      if (prev === 'red' && this.role === 'faker' && this.player && !this.player.eliminated && !this.ending && this._redPeakHuman < 0.25) {
+        this.addScore(TUNING.score.perfectFreeze, 'pPerfect');
+      }
       for (const c of this.chars) if (c.kind === 'npc' || c.kind === 'faker') scheduleResume(c, this.rng);
     }
     this.audio.setTension(this.lights.tension);
@@ -164,7 +197,7 @@ export class Game {
 
     if (this.state !== 'playing') { this.threat *= (1 - Math.min(1, raw * 4)); return; }
 
-    if (this.role === 'faker' && this.watcher && !this.ending) {
+    if (this.role === 'faker' && this.watcher && !this.ending && !this.interlude) {
       const w = this.watcher;
       const onMe = w.target === this.player && w.reticle.visible && !this.player.eliminated;
       const goal = onMe ? Math.min(1, w.reticle.lock) : 0;
@@ -174,7 +207,10 @@ export class Game {
         this._alerted = true; this.audio.alertSting(); this._banner('bSpotted', PALETTE.red); this.renderer.addShake(7);
       }
       if (!onMe || w.reticle.lock < 0.05) {
-        if (this._alerted && prev > 0.4) { this.audio.relief(); this._banner('bClose', PALETTE.green); }
+        if (this._alerted && prev > 0.4) {
+          this.audio.relief(); this._banner('bClose', PALETTE.green);
+          this.addScore(TUNING.score.closeCall, 'pClose');
+        }
         this._alerted = false;
       }
       // Heartbeat quickens with danger.
@@ -205,24 +241,37 @@ export class Game {
     if (this.input.pressed.has('escape') || this.input.pressed.has('p')) { this.pause(); return; }
     const ctx = { world: this.world, light: this.lights, rng: this.rng, audio: this.audio, chars: this.chars };
 
+    for (const p of this.popups) p.t -= raw;
+    this.popups = this.popups.filter((p) => p.t > 0);
+
+    // Between-round interlude: crowd keeps living, scoreboard shows.
+    if (this.interlude) {
+      this.interlude.t -= raw;
+      this._stepCrowd(dt, ctx);
+      if (this.interlude.t <= 0) { this.interlude = null; this._newRound(); }
+      return;
+    }
+
     if (this.ending) {
       this.endTimer -= raw;
       this._stepCrowd(dt, ctx);
       this._scoreConformity(dt);
-      if (this.endTimer <= 0) this._showResult(this.ending);
+      if (this.endTimer <= 0) this._roundOver(this.ending);
       return;
     }
 
     this.lights.update(dt);
     this.roundLeft -= dt;
-    this.survival += dt;
+    if (!this.player || !this.player.eliminated) this.survival += dt;
 
     if (this.role === 'faker') this._playerControl(dt);
     this._stepCrowd(dt, ctx);
     this._scoreConformity(dt);
 
     if (this.role === 'faker') {
-      updatePlayerSuspicion(this.player, dt, { light: this.lights, world: this.world, crowd: this.chars, humanness: this.player.humanness });
+      if (!this.player.eliminated) {
+        updatePlayerSuspicion(this.player, dt, { light: this.lights, world: this.world, crowd: this.chars, humanness: this.player.humanness });
+      }
       this.watcher.update(dt, {
         light: this.lights, chars: this.chars, audio: this.audio,
         onAccuse: (t, correct) => this._onAccuse(t, correct),
@@ -235,22 +284,50 @@ export class Game {
     if (this.missions) this._checkMissions(dt);
     this._tutorialTips(dt);
 
-    // ---- win / lose ----
+    // ---- round end conditions (team framing: you + the AI fakers) ----
     if (this.role === 'faker') {
-      if (this.player.goalReached) return this._beginEnd(true, 'goal');
-      if (this.roundLeft <= 0) return this._beginEnd(false, 'timeup');
-      if (this.watcher.marks <= 0) return this._beginEnd(true, 'marks');
+      // AI teammates who slip through the gate keep the round alive for the team.
+      for (const c of this.chars) {
+        if (c.kind !== 'faker' || !c.goalReached || c._counted) continue;
+        c._counted = true;
+        this.addScore(TUNING.score.mateEscape, 'pMate', PALETTE.green);
+      }
+      if (this.player.goalReached) {
+        this.addScore(TUNING.score.goal, 'pGoal');
+        return this._beginEnd('fakers', 'goal');
+      }
+      const team = [this.player, ...this.chars.filter((c) => c.kind === 'faker')];
+      const active = team.filter((c) => !c.eliminated && !c.goalReached);
+      const escaped = team.some((c) => c.goalReached);
+      if (active.length === 0) return this._beginEnd(escaped ? 'fakers' : 'watcher', escaped ? 'teamgoal' : 'allcaught');
+      if (this.player.eliminated && escaped) return this._beginEnd('fakers', 'teamgoal');
+      if (this.roundLeft <= 0) {
+        if (!this.player.eliminated) this.addScore(TUNING.score.timeSurvive, 'pSurvive');
+        return this._beginEnd(active.length > 0 || escaped ? 'fakers' : 'watcher', 'timeup');
+      }
+      if (this.watcher.marks <= 0) return this._beginEnd('fakers', 'marks');
     } else {
       const fakers = this.chars.filter((c) => c.kind === 'faker');
-      if (fakers.some((c) => c.goalReached)) return this._beginEnd(false, 'watchlose');
-      if (fakers.length && fakers.every((c) => c.eliminated)) return this._beginEnd(true, 'watchwin');
-      if (this.roundLeft <= 0) return this._beginEnd(false, 'watchtime');
-      if (this.watch.marks <= 0) return this._beginEnd(false, 'watchmarks');
+      if (fakers.some((c) => c.goalReached)) return this._beginEnd('fakers', 'watchlose');
+      if (fakers.length && fakers.every((c) => c.eliminated)) {
+        this.addScore(TUNING.score.watcherRound, 'bRoundWin');
+        return this._beginEnd('watcher', 'watchwin');
+      }
+      if (this.roundLeft <= 0) return this._beginEnd('fakers', 'watchtime');
+      if (this.watch.marks <= 0) return this._beginEnd('fakers', 'watchmarks');
     }
 
+    // camera: follow your char, or a surviving teammate when you're caught
+    let focus = this.player;
+    if (this.role === 'faker' && this.player.eliminated) {
+      if (!this.followTarget || this.followTarget.eliminated || this.followTarget.goalReached) {
+        this.followTarget = this.chars.find((c) => c.kind === 'faker' && !c.eliminated && !c.goalReached) || this.player;
+      }
+      focus = this.followTarget;
+    }
     const view = this.role === 'watcher'
       ? { f: { x: this.world.w / 2, y: this.world.h / 2 + 30 }, w: TUNING.watch.viewW, h: TUNING.watch.viewH }
-      : { f: this.player, w: 1240, h: 820 };
+      : { f: focus, w: 1240, h: 820 };
     this.renderer.updateCamera(view.f, dt, view.w, view.h);
   }
 
@@ -265,6 +342,7 @@ export class Game {
       const base = crowdBaseline(c.x, c.y, this.chars);
       const ev = evaluateFreeze(c, base);
       c.humanness = ev.humanness; c.tellTag = ev.tag; c.baseFacing = base.facing;
+      if (c.kind === 'player') this._redPeakHuman = Math.max(this._redPeakHuman, ev.humanness);
       if (c.kind === 'faker') {
         if (ev.humanness > C.tellShow) { c.suspicion = Math.min(100, c.suspicion + C.redRise * ev.humanness * dt); if (ev.humanness > 0.6) c.mistake = Math.max(c.mistake, 0.3); }
         else c.suspicion = Math.max(0, c.suspicion - C.goodFreeze * dt);
@@ -309,7 +387,13 @@ export class Game {
     p.syncCooldown = Math.max(0, p.syncCooldown - dt);
     if (inp.pressed.has('e')) this._sync();
 
-    if (p.activeAction) { p.activeAction.timer -= dt; p.pose = p.activeAction.pose; if (p.activeAction.timer <= 0) p.activeAction = null; }
+    // Your pose is frozen while the light is red — the action holds as long
+    // as the freeze does (this is what lets you HOLD a Blend Task pose).
+    if (p.activeAction) {
+      if (!onRed) p.activeAction.timer -= dt;
+      p.pose = p.activeAction.pose;
+      if (p.activeAction.timer <= 0) p.activeAction = null;
+    }
 
     p._collideCd = Math.max(0, (p._collideCd || 0) - dt);
     if (p.speed > 10 && p._collideCd === 0) {
@@ -330,11 +414,6 @@ export class Game {
     this.stats.actions++;
     this.audio.action();
     if (!valid) this.audio.penalty();
-    // Mission completion via a valid contextual action.
-    if (valid && this.missions) {
-      const m = this.missions.find((mm) => !mm.done && !mm.red && mm.ctx === a.ctx);
-      if (m) { m.done = true; this.audio.uiSelect(); }
-    }
   }
 
   _performSmart() {
@@ -392,8 +471,8 @@ export class Game {
     this.audio.accuse();
     target.accused = 1.0; target._accuseCorrect = correct;
     this._dramatize(target, correct, false);
-    if (correct) this.stats.correct++;
-    else { this.stats.false++; this.watch.marks--; this.audio.falseAccuse(); }
+    if (correct) { this.stats.correct++; this.addScore(TUNING.score.watcherCatch, 'pCatch'); }
+    else { this.stats.false++; this.watch.marks--; this.audio.falseAccuse(); this.addScore(TUNING.score.watcherMiss, 'pMiss'); }
     this.watch.pins.delete(target.id);
   }
 
@@ -420,7 +499,12 @@ export class Game {
           c.accused = 0;
           if (c._accuseCorrect) {
             c.eliminated = true;
-            if (c.kind === 'player') this._beginEnd(false, 'caught');
+            if (c.kind === 'player') {
+              // Caught is not the end: your team plays on, you spectate.
+              this.audio.caught();
+              this._banner('bTeamOn', PALETTE.amber, 2.2);
+              this.announce(this.T().spectating);
+            }
           }
         }
       }
@@ -429,12 +513,30 @@ export class Game {
 
   _missionsDone() { return this.missions ? this.missions.every((m) => m.done) : true; }
 
+  // Blend Tasks are held THROUGH Red Light: be in the zone, in the pose, while
+  // frozen. Progress accrues only on red — the risk is committing to a spot.
   _checkMissions(dt) {
-    if (this.lights.phase !== 'red') return;
     const p = this.player;
+    if (p.eliminated) return;
+    const hold = TUNING.mission.holdSeconds;
     for (const m of this.missions) {
-      if (m.done || !m.red) continue;
-      if (this.world.nearestZone(p.x, p.y, m.ctx, 76)) { m.done = true; this.audio.uiSelect(); }
+      if (m.done) continue;
+      m.progress = m.progress || 0;
+      if (this.lights.phase !== 'red') continue;
+      const inZone = !!this.world.nearestZone(p.x, p.y, m.ctx, 76);
+      const poseOk = !m.pose || p.pose === m.pose;
+      if (inZone && poseOk && p.speed < 6) {
+        m.progress = Math.min(hold, m.progress + dt);
+        if (m.progress >= hold) {
+          m.done = true;
+          this.audio.missionDone();
+          this.addScore(TUNING.score.mission, 'pMission');
+          // completing a task steadies your nerves and resets your Sync
+          p.suspicion = Math.max(0, p.suspicion - 30);
+          p.syncCooldown = 0;
+          if (this._missionsDone()) this._banner('bGoal', PALETTE.green, 2.6);
+        }
+      }
     }
   }
 
@@ -447,59 +549,86 @@ export class Game {
     else this.tip = null;
   }
 
-  _beginEnd(win, key) {
+  // winner: 'fakers' | 'watcher' — my side wins if it matches my team.
+  _beginEnd(winner, key) {
     if (this.ending) return;
-    this.ending = { win, key };
+    const mySide = this.role === 'watcher' ? 'watcher' : 'fakers';
+    const win = winner === mySide;
+    this.ending = { win, winner, key };
     this.reveal = true;
     this.endTimer = 1.6;
     this.threat = 0; this._alerted = false;
     if (win) {
-      this.audio.win(); if (key === 'goal') this.audio.goal();
+      if (key === 'goal') { this.audio.goal(); this.renderer.punchZoom(this.player.x, this.player.y, 0.5, 0.9); }
       this.fxFlashA = 0.5; this.fxFlashCol = [46, 204, 113];
       this.renderer.addShake(6);
-      if (key === 'goal' && this.player) this.renderer.punchZoom(this.player.x, this.player.y, 0.5, 0.9);
-      this._banner('bSafe', PALETTE.green);
-    } else if (key !== 'caught') {
-      this.audio.lose();
     }
     this.audio.setTension(0.2);
+  }
+
+  // Round settled: move the match score, then interlude or final result.
+  _roundOver(result) {
+    this.wins[result.winner]++;
+    const matchOver = this.wins[result.winner] >= this.matchTarget;
+    this.ending = null;
+    this.reveal = false;
+    if (matchOver) return this._showResult(result);
+
+    if (result.win) { this.audio.roundWin(); this._banner('bRoundWin', PALETTE.green, 2.4); }
+    else { this.audio.roundLose(); this._banner('bRoundLose', PALETTE.red, 2.4); }
+    const mySide = this.role === 'watcher' ? 'watcher' : 'fakers';
+    if (this.wins[mySide] === this.matchTarget - 1 || this.wins[mySide === 'watcher' ? 'fakers' : 'watcher'] === this.matchTarget - 1) {
+      setTimeout(() => { if (this.interlude) this._banner('bMatchPoint', PALETTE.amber, 1.4); }, 1300);
+    }
+    this.interlude = { t: TUNING.match.interlude, win: result.win, key: result.key };
+    this.announce(result.win ? this.T().bRoundWin : this.T().bRoundLose);
   }
 
   _showResult(result) {
     this.state = 'result';
     const t = this.T();
-    if (!result.win && result.key === 'caught') this.audio.caught();
+    if (result.win) this.audio.win(); else this.audio.lose();
+
+    // rank + personal best
+    const S = TUNING.score;
+    const rank = this.score >= S.rankS ? 'S' : this.score >= S.rankA ? 'A' : this.score >= S.rankB ? 'B' : 'C';
+    const best = loadBest();
+    const prev = best[this.mode] || 0;
+    const isRecord = this.score > prev;
+    if (isRecord) { best[this.mode] = this.score; saveBest(best); }
 
     let title, sub, stats;
+    const scoreRows = [
+      { k: t.scoreWord, v: String(this.score) + (isRecord ? ' ★' : '') },
+      { k: t.rankWord, v: rank },
+    ];
     if (this.role === 'watcher') {
+      title = result.win ? t.matchWin : t.matchLose;
       const map = {
-        watchwin: [t.watchWin, t.watchWinSub], watchlose: [t.watchLose, t.watchLoseSub],
-        watchtime: [t.watchTimeUp, t.watchTimeUpSub], watchmarks: [t.watchMarks, t.watchMarksSub],
+        watchwin: t.watchWinSub, watchlose: t.watchLoseSub,
+        watchtime: t.watchTimeUpSub, watchmarks: t.watchMarksSub,
       };
-      [title, sub] = map[result.key] || [t.watchLose, ''];
-      const total = this.watch.fakersTotal;
+      sub = `${this.wins.watcher} - ${this.wins.fakers} · ` + (map[result.key] || '');
       const acc = (this.stats.correct + this.stats.false) ? Math.round(100 * this.stats.correct / (this.stats.correct + this.stats.false)) : 0;
       stats = [
-        { k: t.statCaught, v: `${this.stats.correct}/${total}` },
+        ...scoreRows,
+        { k: t.statCaught, v: String(this.stats.correct) },
         { k: t.statAccuracy, v: `${acc}%` },
-        { k: t.marks, v: `${this.watch.marks}/${TUNING.watch.marks}` },
-        { k: t.statTime, v: fmt(this.survival) },
       ];
     } else {
       const map = {
-        goal: [t.win, t.winSub], marks: [t.win, t.winSub],
-        timeup: [t.timeUp, t.timeUpSub], caught: [t.lose, t.loseSub],
+        goal: t.winSub, teamgoal: t.pMate, marks: t.winSub,
+        timeup: t.pSurvive, allcaught: t.loseSub,
       };
-      [title, sub] = map[result.key] || [t.lose, ''];
-      const progress = clamp01((this.spawnY - this.player.y) / (this.spawnY - this.world.goal.y));
+      title = result.win ? t.matchWin : t.matchLose;
+      sub = `${this.wins.fakers} - ${this.wins.watcher} · ` + (map[result.key] || '');
       stats = [
+        ...scoreRows,
         { k: t.statTime, v: fmt(this.survival) },
-        { k: t.statProgress, v: Math.round(progress * 100) + '%' },
-        { k: t.statActions, v: String(this.stats.actions) },
         { k: t.statSync, v: String(this.stats.syncs) },
       ];
     }
-    this.ui.showResult({ win: result.win, title, sub, stats });
+    this.ui.showResult({ win: result.win, title, sub: (isRecord ? t.newRecord + '  ·  ' : '') + sub, stats });
     this.announce(title);
     this.ending = null;
   }
@@ -551,6 +680,18 @@ export class Game {
       colorblind: this.settings.colorblind,
       light: { phase: this.lights.phase, timeLeft: this.lights.timeLeft, phaseDuration: this.lights.phaseDuration },
       roundLeft: this.roundLeft, role: this.role,
+      // match & score layer
+      score: this.score,
+      wins: this.wins, matchTarget: this.matchTarget, roundNum: this.roundNum,
+      popups: this.popups,
+      spectating: this.role === 'faker' && this.player && this.player.eliminated && !this.ending && !this.interlude ? t.spectating : null,
+      interlude: this.interlude ? {
+        frac: this.interlude.t / TUNING.match.interlude, win: this.interlude.win,
+        title: this.interlude.win ? t.bRoundWin : t.bRoundLose,
+        score: `${t.teamFakers} ${this.wins.fakers}  -  ${this.wins.watcher} ${t.teamWatcher}`,
+        next: `${t.roundWord} ${this.roundNum + 1}`,
+      } : null,
+      teamFakers: t.teamFakers, teamWatcher: t.teamWatcher, scoreWord: t.scoreWord,
     };
     let s;
     if (this.role === 'watcher') {
@@ -578,8 +719,11 @@ export class Game {
         activeActionId: p.activeAction ? p.activeAction.id : null,
         actionProgress: p.activeAction ? p.activeAction.timer / TUNING.disguise.actionDuration : null,
         actions: ACTIONS.map((a) => ({ ...a, valid: a.ctx === 'any' || !!this.world.nearestZone(p.x, p.y, a.ctx, 84) })),
-        missions: this.missions ? this.missions.map((m) => ({ label: this.settings.lang === 'ja' ? m.labelJA : m.labelEN, done: m.done })) : null,
-        missionsTitle: t.objectives,
+        missions: this.missions ? this.missions.map((m) => ({
+          label: this.settings.lang === 'ja' ? m.labelJA : m.labelEN, done: m.done,
+          frac: m.done ? 1 : (m.progress || 0) / TUNING.mission.holdSeconds,
+        })) : null,
+        missionsTitle: t.objectives, missionsHint: t.holdOnRed,
       };
     }
     ctx.save();
