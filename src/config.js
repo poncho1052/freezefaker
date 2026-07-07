@@ -31,16 +31,19 @@ export const HAIR = ['#1c1a19', '#2b2320', '#3a2a1c', '#4a3526', '#6b5a48', '#20
 // Gameplay tunables (Classic: Freeze Run defaults, adapted for single-Watcher solo play).
 export const TUNING = {
   world: { w: 1680, h: 1040 },
-  round: { seconds: 150 },
+  round: { seconds: 140 },
 
-  // Light cycle (seconds). Ranges per dev spec §3.1.
+  // Light cycle (seconds) — punchy cadence so freeze decisions come fast.
   light: {
-    greenMin: 7.5, greenMax: 12,
-    redMin: 4.5, redMax: 7,
-    warning: 1.2,          // Red Light warning length
+    greenMin: 5.5, greenMax: 8.5,
+    redMin: 3.6, redMax: 5.6,
+    warning: 1.0,          // Red Light warning length
     resumeStaggerMax: 0.5, // NPC resume offset
-    firstGreen: 4.5,       // extra intro green so players orient
+    firstGreen: 3.5,       // extra intro green so players orient
   },
+
+  // Screen-feel effects.
+  fx: { slowmo: 0.3, slowmoPlayer: 0.85, slowmoDecoy: 0.42 },
 
   faker: {
     walk: 118,             // px/s, close to NPC speed
@@ -75,9 +78,9 @@ export const TUNING = {
   watcher: {
     marks: 5,               // accusation marks (false accusations consume marks)
     scanInterval: 0.45,     // seconds between suspicion re-evaluations
-    reticleSpeed: 520,      // px/s the focus reticle travels
-    lockTime: 0.9,          // seconds the reticle must dwell to accuse
-    accuseThreshold: 62,    // perceived-human score needed to commit
+    reticleSpeed: 580,      // px/s the focus reticle travels
+    lockTime: 0.85,         // seconds the reticle must dwell to accuse
+    accuseThreshold: 58,    // perceived-human score needed to commit
     perceptionNoise: 14,    // random slack so the AI is beatable and fair
     onlyOnRed: true,        // accuses during Red Light (per spec)
   },
@@ -167,6 +170,7 @@ export const I18N = {
     tellFacing: 'Wrong way', tellIso: 'Too alone', tellPose: 'Odd pose', tellMove: 'Moving!', tellOk: 'Blended',
     faceCrowd: 'Face where the crowd faces',
     penaltyT: 'YOU LOOK HUMAN', penaltySub: 'Match the crowd’s stance',
+    bSpotted: 'SPOTTED!', bClose: 'CLOSE!', bCaught: 'CAUGHT', bGotcha: 'GOTCHA!', bSafe: 'SURVIVED', bMiss: 'MISFIRE',
     // watcher HUD / results
     fakersLeft: 'Fakers', accuseHint: 'RED LIGHT — click a suspect to accuse', pinHint: 'Right-click to pin a suspect',
     observeHint: 'GREEN — watch how they move', pinned: 'Pinned',
@@ -218,6 +222,7 @@ export const I18N = {
     tellFacing: '向きがズレてる', tellIso: '一人ぼっち', tellPose: 'ポーズが変', tellMove: '動いてる！', tellOk: '紛れてる',
     faceCrowd: '群衆と同じ向きを向け',
     penaltyT: '人間っぽい', penaltySub: '群衆と同じ姿勢に',
+    bSpotted: '見つかった！', bClose: 'あぶない！', bCaught: '御用', bGotcha: '確保！', bSafe: '逃げ切った', bMiss: '誤指摘',
     // watcher HUD / results
     fakersLeft: 'Faker', accuseHint: 'RED LIGHT — 怪しい人をクリックして指摘', pinHint: '右クリックでマーク',
     observeHint: 'GREEN — 動きをよく見ろ', pinned: 'マーク中',

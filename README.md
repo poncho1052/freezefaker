@@ -83,6 +83,9 @@ python3 -m http.server 8000
 - Three modes: **Classic · Freeze Run**, **Blend Task** (missions), and playable **Watcher · Spot the Human**
 - **Freeze-conformity** core: crowd faces shared attractors on freeze; Fakers judged on facing / pose / spacing
   deviation — with on-screen tells, an expected-facing arrow, and pivot-in-place on Red
+- **Hunted-tension loop**: when the AI Watcher locks onto you, a red threat vignette closes in with a quickening
+  heartbeat and a **SPOTTED!** alert — turn to blend or NPC-Sync to break the lock for a **CLOSE!** relief, or get
+  caught in a slow-mo, screen-shaking **GOTCHA** punch-zoom. Decoy catches and your goal run get the same payoff.
 - Green / Red Light cycle with a warning phase, per-phase countdown, freeze-snap flash, and staggered NPC resume
 - A readable NPC crowd (~48) with archetypes, wander schedules and context-aware freeze poses
 - AI **decoy Fakers** who race the gate, freeze with imperfect tells, and can be caught in your place

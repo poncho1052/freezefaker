@@ -30,6 +30,11 @@ export class Game {
     this.time = 0;
     this.flash = 0;
     this.reveal = false;
+    // screen-feel state
+    this.timeScale = 1; this.slowmoT = 0; this.threat = 0;
+    this.fxFlashA = 0; this.fxFlashCol = [229, 57, 53];
+    this.bannerKey = null; this.bannerColor = '#fff'; this.bannerT = 0;
+    this._alerted = false; this._hbAcc = 0;
     this.last = performance.now();
     this._loop = this._loop.bind(this);
     this.input.onPress((k) => {
@@ -111,7 +116,7 @@ export class Game {
 
   _onPhase(phase, prev) {
     if (phase === 'warning') this.audio.redWarning();
-    else if (phase === 'red') { this.audio.redStart(); this.audio.freezeSnap(); this.flash = 1; this.announce(this.T().redSub); }
+    else if (phase === 'red') { this.audio.redStart(); this.audio.freezeSnap(); this.flash = 1; this.renderer.addShake(5); this.announce(this.T().redSub); }
     else if (phase === 'green') {
       this.audio.greenStart();
       this.announce(this.T().greenSub);
@@ -122,24 +127,72 @@ export class Game {
 
   // ---------------- main loop ----------------
   _loop(now) {
-    let dt = (now - this.last) / 1000;
+    let raw = (now - this.last) / 1000;
     this.last = now;
-    if (dt > 0.05) dt = 0.05;
-    this.time += dt;
-    this.flash = Math.max(0, this.flash - dt * 2.2);
+    if (raw > 0.05) raw = 0.05;
+    this.time += raw;
+    this.flash = Math.max(0, this.flash - raw * 2.2);
+    this._updateFx(raw);
+    const dt = raw * this.timeScale;
 
-    if (this.state === 'playing') this._update(dt);
+    if (this.state === 'playing') this._update(dt, raw);
     this._render();
     this.input.endFrame();
     requestAnimationFrame(this._loop);
   }
 
-  _update(dt) {
+  // Screen-feel: slow-mo, flash, banner timers, and the hunted-lock threat loop.
+  _updateFx(raw) {
+    this.slowmoT = Math.max(0, this.slowmoT - raw);
+    this.timeScale = this.slowmoT > 0 ? TUNING.fx.slowmo : 1;
+    this.fxFlashA = Math.max(0, this.fxFlashA - raw * 3.2);
+    this.bannerT = Math.max(0, this.bannerT - raw);
+
+    if (this.state !== 'playing') { this.threat *= (1 - Math.min(1, raw * 4)); return; }
+
+    if (this.role === 'faker' && this.watcher && !this.ending) {
+      const w = this.watcher;
+      const onMe = w.target === this.player && w.reticle.visible && !this.player.eliminated;
+      const goal = onMe ? Math.min(1, w.reticle.lock) : 0;
+      const prev = this.threat;
+      this.threat += (goal - prev) * Math.min(1, raw * 7);
+      if (onMe && w.reticle.lock > 0.14 && !this._alerted) {
+        this._alerted = true; this.audio.alertSting(); this._banner('bSpotted', PALETTE.red); this.renderer.addShake(7);
+      }
+      if (!onMe || w.reticle.lock < 0.05) {
+        if (this._alerted && prev > 0.4) { this.audio.relief(); this._banner('bClose', PALETTE.green); }
+        this._alerted = false;
+      }
+      // Heartbeat quickens with danger.
+      this._hbAcc += raw;
+      const period = this.threat > 0.06 ? 0.92 - this.threat * 0.6 : 999;
+      if (this._hbAcc >= period) { this._hbAcc = 0; this.audio.heartbeat(0.5 + this.threat); }
+    } else {
+      this.threat *= (1 - Math.min(1, raw * 4));
+    }
+  }
+
+  _banner(key, color) { this.bannerKey = key; this.bannerColor = color; this.bannerT = 1.1; }
+
+  // Slow-mo + camera punch + shake + flash on a dramatic accusation.
+  _dramatize(target, correct, isPlayer) {
+    this.slowmoT = isPlayer ? TUNING.fx.slowmoPlayer : TUNING.fx.slowmoDecoy;
+    this.renderer.punchZoom(target.x, target.y, isPlayer ? 0.9 : 0.6, this.slowmoT + 0.1);
+    this.renderer.addShake(isPlayer ? 15 : 9);
+    this.fxFlashA = isPlayer ? 0.75 : 0.5;
+    this.fxFlashCol = correct ? [229, 57, 53] : [255, 193, 7];
+    this.audio.impact();
+    if (isPlayer) this._banner('bCaught', PALETTE.red);
+    else if (correct) this._banner('bGotcha', PALETTE.amber);
+    else this._banner('bMiss', PALETTE.amber);
+  }
+
+  _update(dt, raw = dt) {
     if (this.input.pressed.has('escape') || this.input.pressed.has('p')) { this.pause(); return; }
     const ctx = { world: this.world, light: this.lights, rng: this.rng, audio: this.audio, chars: this.chars };
 
     if (this.ending) {
-      this.endTimer -= dt;
+      this.endTimer -= raw;
       this._stepCrowd(dt, ctx);
       this._scoreConformity(dt);
       if (this.endTimer <= 0) this._showResult(this.ending);
@@ -324,6 +377,7 @@ export class Game {
     const correct = target.kind === 'faker';
     this.audio.accuse();
     target.accused = 1.0; target._accuseCorrect = correct;
+    this._dramatize(target, correct, false);
     if (correct) this.stats.correct++;
     else { this.stats.false++; this.watch.marks--; this.audio.falseAccuse(); }
     this.watch.pins.delete(target.id);
@@ -340,6 +394,7 @@ export class Game {
 
   _onAccuse(target, correct) {
     target.accused = 1.1; target._accuseCorrect = correct;
+    this._dramatize(target, correct, target.kind === 'player');
     if (target.kind === 'player') this.announce(this.T().caught);
   }
 
@@ -382,9 +437,17 @@ export class Game {
     if (this.ending) return;
     this.ending = { win, key };
     this.reveal = true;
-    this.endTimer = 1.4;
-    if (win) { this.audio.win(); if (key === 'goal') this.audio.goal(); }
-    else { if (key !== 'caught') this.audio.lose(); }
+    this.endTimer = 1.6;
+    this.threat = 0; this._alerted = false;
+    if (win) {
+      this.audio.win(); if (key === 'goal') this.audio.goal();
+      this.fxFlashA = 0.5; this.fxFlashCol = [46, 204, 113];
+      this.renderer.addShake(6);
+      if (key === 'goal' && this.player) this.renderer.punchZoom(this.player.x, this.player.y, 0.5, 0.9);
+      this._banner('bSafe', PALETTE.green);
+    } else if (key !== 'caught') {
+      this.audio.lose();
+    }
     this.audio.setTension(0.2);
   }
 
@@ -447,6 +510,9 @@ export class Game {
       flash: this.flash,
       time: this.time,
       tells: { facing: t.tellFacing, iso: t.tellIso, pose: t.tellPose, move: t.tellMove, ok: t.tellOk },
+      threat: this.role === 'faker' ? this.threat : 0,
+      fxFlash: { col: this.fxFlashCol, a: this.fxFlashA },
+      banner: this.bannerT > 0 && this.bannerKey ? { text: t[this.bannerKey] || '', color: this.bannerColor, alpha: this.bannerT } : null,
     };
     this.renderer.render(scene);
   }

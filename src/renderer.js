@@ -13,9 +13,14 @@ export class Renderer {
     this.world = world;
     this.cam = { x: world.w / 2, y: world.h / 2, zoom: 1 };
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.shake = 0; this.shakeX = 0; this.shakeY = 0;
+    this.punchT = 0; this.punchDur = 0.0001; this.punchAmt = 0; this.punchFocus = null;
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
+
+  addShake(a) { this.shake = Math.max(this.shake, a); }
+  punchZoom(x, y, amt, time) { this.punchT = time; this.punchDur = time; this.punchAmt = amt; this.punchFocus = { x, y }; }
 
   resize() {
     const c = this.canvas;
@@ -29,15 +34,29 @@ export class Renderer {
 
   // Fit a target world-area into view; follow a focus point.
   updateCamera(focus, dt = 0.016, viewW = 1240, viewH = 820) {
-    const zoom = Math.min(this.vw / viewW, this.vh / viewH) * 1.0;
+    let zoom = Math.min(this.vw / viewW, this.vh / viewH) * 1.0;
+    let fx = focus.x, fy = focus.y;
+    // Punch-zoom toward a dramatic point (accusation), easing back out.
+    if (this.punchT > 0) {
+      this.punchT = Math.max(0, this.punchT - dt);
+      const e = this.punchT / this.punchDur; // 1 -> 0
+      const ease = e * e;
+      zoom *= 1 + this.punchAmt * ease;
+      if (this.punchFocus) { fx += (this.punchFocus.x - fx) * ease; fy += (this.punchFocus.y - fy) * ease; }
+    }
     this.cam.zoom = zoom;
     const halfW = this.vw / zoom / 2, halfH = this.vh / zoom / 2;
-    const tx = clamp(focus.x, halfW, this.world.w - halfW);
-    const ty = clamp(focus.y, halfH, this.world.h - halfH);
-    // Smooth follow.
-    const k = 1 - Math.pow(0.001, dt);
+    const tx = clamp(fx, halfW, this.world.w - halfW);
+    const ty = clamp(fy, halfH, this.world.h - halfH);
+    // Smooth follow (snappier during a punch).
+    const k = 1 - Math.pow(this.punchT > 0 ? 0.000001 : 0.001, dt);
     this.cam.x += (tx - this.cam.x) * k;
     this.cam.y += (ty - this.cam.y) * k;
+    // Screen shake, decaying.
+    this.shake = Math.max(0, this.shake - dt * 34);
+    const s = this.shake;
+    this.shakeX = s ? (Math.random() * 2 - 1) * s : 0;
+    this.shakeY = s ? (Math.random() * 2 - 1) * s : 0;
   }
 
   w2s(x, y) {
@@ -62,7 +81,7 @@ export class Renderer {
 
     // World transform
     ctx.save();
-    ctx.translate(this.vw / 2, this.vh / 2);
+    ctx.translate(this.vw / 2 + this.shakeX, this.vh / 2 + this.shakeY);
     ctx.scale(this.cam.zoom, this.cam.zoom);
     ctx.translate(-this.cam.x, -this.cam.y);
 
@@ -98,12 +117,49 @@ export class Renderer {
     // Full-screen light tint (subtle, keeps crowd readable).
     this._drawLightTint(scene);
 
+    // Threat vignette — you are being locked on.
+    if (scene.threat > 0.02) this._drawThreat(scene.threat, scene.time);
+
     // Freeze-snap flash.
     if (scene.flash > 0.001) {
       ctx.fillStyle = `rgba(242,241,236,${scene.flash * 0.45})`;
       ctx.fillRect(0, 0, this.vw, this.vh);
     }
+    // Dramatic colored flash (accusation / catch).
+    if (scene.fxFlash && scene.fxFlash.a > 0.001) {
+      const c = scene.fxFlash;
+      ctx.fillStyle = `rgba(${c.col[0]},${c.col[1]},${c.col[2]},${c.a})`;
+      ctx.fillRect(0, 0, this.vw, this.vh);
+    }
+    // Center banner (SPOTTED / CLOSE / CAUGHT / ...).
+    if (scene.banner && scene.banner.alpha > 0.01) this._drawBanner(scene.banner);
 
+    ctx.restore();
+  }
+
+  _drawThreat(level, t) {
+    const ctx = this.ctx;
+    const pulse = 0.5 + 0.5 * Math.sin(t * (6 + level * 8));
+    const a = Math.min(0.62, level * (0.34 + 0.28 * pulse));
+    const g = ctx.createRadialGradient(this.vw / 2, this.vh / 2, this.vh * 0.28, this.vw / 2, this.vh / 2, this.vh * 0.72);
+    g.addColorStop(0, 'rgba(229,57,53,0)');
+    g.addColorStop(1, `rgba(229,57,53,${a})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, this.vw, this.vh);
+  }
+
+  _drawBanner(b) {
+    const ctx = this.ctx;
+    const alpha = Math.min(1, b.alpha * 1.6);
+    const scale = 1 + (1 - b.alpha) * 0.35;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(this.vw / 2, this.vh * 0.34);
+    ctx.scale(scale, scale);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '900 62px system-ui, sans-serif';
+    ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(14,22,33,0.85)';
+    ctx.strokeText(b.text, 0, 0);
+    ctx.fillStyle = b.color; ctx.fillText(b.text, 0, 0);
     ctx.restore();
   }
 
