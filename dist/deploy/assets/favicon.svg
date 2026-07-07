@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0E1621"/>
+  <text x="10" y="44" font-family="Arial Black, sans-serif" font-size="30" font-weight="900" fill="#F2F1EC">F</text>
+  <text x="38" y="44" font-family="Arial Black, sans-serif" font-size="30" font-weight="900" fill="#E53935">F</text>
+  <g stroke="#F2F1EC" stroke-width="2.4" fill="none">
+    <path d="M24 20 q8 -7 16 0 q-8 7 -16 0Z"/>
+  </g>
+  <circle cx="32" cy="20" r="3.4" fill="#E53935"/>
+</svg>

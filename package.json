@@ -1,0 +1,11 @@
+{
+  "name": "freeze-faker",
+  "version": "0.2.0",
+  "description": "Freeze Faker — playable build + zero-dependency multiplayer server",
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.js",
+    "serve": "node server/server.js"
+  },
+  "engines": { "node": ">=18" }
+}

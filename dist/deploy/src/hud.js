@@ -1,0 +1,625 @@
+// In-match HUD drawn in screen space, styled after docs UI board:
+// light banner, timer, watcher marks, survival/objective, disguise bar,
+// NPC Sync cooldown, penalty warning.
+import { PALETTE, I18N } from './config.js';
+
+export class Hud {
+  // Tap-target lookup for touch play (rects recorded during draw, CSS px).
+  hit(x, y) {
+    if (!this._hits) return null;
+    for (const h of this._hits) {
+      if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) return h;
+    }
+    return null;
+  }
+
+  draw(ctx, vw, vh, s) {
+    const t = I18N[s.lang] || I18N.en;
+    const mob = vw < 640;
+    const scale = (s.hudScale || 1) * (mob ? Math.max(0.8, (vw / 640) * 0.95) : 1);
+    this._hits = [];
+    this.mob = mob;
+    ctx.save();
+    ctx.textBaseline = 'alphabetic';
+
+    this._banner(ctx, vw, s, t, scale, mob);
+    this._marks(ctx, s, t, scale, mob);
+    if (s.wins) this._matchStrip(ctx, vw, s, t, scale, mob);
+    if (s.score != null) this._score(ctx, s, t, scale, mob);
+    if (s.canPause) this._pauseBtn(ctx, vw, scale, mob);
+
+    this._exposedBottom = 0;
+    if (s.role === 'watcher') {
+      this._fakersLeft(ctx, vw, s, t, scale, mob);
+      if (s.intel) this._wanted(ctx, vw, s, t, scale, mob);
+      this._watchHint(ctx, vw, vh, s, t, scale);
+    } else {
+      this._status(ctx, vw, s, t, scale, mob);
+      if (s.intel) this._exposed(ctx, s, t, scale, mob);
+      if (!s.spectating) {
+        this._actionBar(ctx, vw, vh, s, t, scale);
+        this._sync(ctx, vh, s, t, scale, mob);
+        this._penalty(ctx, vw, vh, s, t, scale);
+      } else {
+        this._spectate(ctx, vw, vh, s, t, scale);
+      }
+      if (s.missions) this._missions(ctx, vw, s, t, scale, mob);
+    }
+
+    if (s.joy && s.joy.active) this._joystick(ctx, s.joy);
+    if (s.popups && s.popups.length) this._popups(ctx, vw, vh, s, scale);
+    if (s.interlude) this._interlude(ctx, vw, vh, s, t, scale);
+
+    ctx.restore();
+  }
+
+  // WANTED card (you are the Watcher): a silhouette that fills in with the
+  // target's real outfit as clues reveal — hunt THAT person, not "anyone".
+  _wanted(ctx, vw, s, t, scale, mob) {
+    const I = s.intel, a = I.appearance;
+    const w = (mob ? 116 : 148) * scale, h = (mob ? 150 : 186) * scale;
+    const x = vw - w - (mob ? 10 : 16 * scale);
+    const y = mob ? this._bannerBottom + 104 * scale : 128 * scale;
+    this._panel(ctx, x, y, w, h, 10, PALETTE.red);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = PALETTE.red; ctx.font = `900 ${13 * scale}px "Arial Black", Arial`;
+    ctx.fillText(t.wanted, x + w / 2, y + 18 * scale);
+
+    // figure
+    const cx = x + w / 2, fy = y + 30 * scale, u = (mob ? 5.2 : 6.4) * scale; // unit
+    const UNK = '#454c57';
+    const rev = (i) => i < I.level;
+    // hat (clue 1)
+    if (rev(1) && a.hat) {
+      ctx.fillStyle = a.hat;
+      ctx.fillRect(cx - 2.6 * u, fy + 0.6 * u, 5.2 * u, 0.7 * u);
+      ctx.fillRect(cx - 1.7 * u, fy - 0.8 * u, 3.4 * u, 1.5 * u);
+    } else {
+      ctx.fillStyle = rev(1) ? 'transparent' : UNK;
+      if (!rev(1)) ctx.fillRect(cx - 1.9 * u, fy - 0.6 * u, 3.8 * u, 1.2 * u);
+    }
+    // head + hair
+    ctx.fillStyle = a.hair; ctx.fillRect(cx - 1.6 * u, fy + 1.2 * u, 3.2 * u, 0.9 * u);
+    ctx.fillStyle = a.skin; ctx.fillRect(cx - 1.5 * u, fy + 1.9 * u, 3 * u, 2.3 * u);
+    // glasses (clue 4)
+    if (rev(3) && a.glasses) { ctx.fillStyle = '#20242b'; ctx.fillRect(cx - 1.6 * u, fy + 2.5 * u, 3.2 * u, 0.6 * u); }
+    // torso (clue 0 = top color)
+    ctx.fillStyle = rev(0) ? a.clothing : UNK;
+    ctx.fillRect(cx - 2.1 * u, fy + 4.4 * u, 4.2 * u, 3.6 * u);
+    // bag (clue 3)
+    if (rev(2) && a.bag) { ctx.fillStyle = a.bag; ctx.fillRect(cx - 3.2 * u, fy + 5.2 * u, 1 * u, 2 * u); }
+    else if (!rev(2)) { ctx.fillStyle = UNK; ctx.fillRect(cx - 3.2 * u, fy + 5.2 * u, 1 * u, 2 * u); }
+    // legs (clue 5 = pants)
+    ctx.fillStyle = rev(4) ? a.pants : UNK;
+    ctx.fillRect(cx - 1.9 * u, fy + 8.1 * u, 1.5 * u, 3.4 * u);
+    ctx.fillRect(cx + 0.4 * u, fy + 8.1 * u, 1.5 * u, 3.4 * u);
+
+    // clue count + next-clue progress
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${9.5 * scale}px system-ui`;
+    ctx.fillText(`${Math.min(I.level, I.max)}/${I.max}`, cx, y + h - 18 * scale);
+    const bw = w - 28 * scale;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, x + 14 * scale, y + h - 12 * scale, bw, 4 * scale, 2); ctx.fill();
+    ctx.fillStyle = PALETTE.red; rrect(ctx, x + 14 * scale, y + h - 12 * scale, bw * Math.min(1, I.frac), 4 * scale, 2); ctx.fill();
+  }
+
+  // THEY-KNOW meter (you are a Faker): what the Watcher already knows about
+  // YOUR outfit. Full bar = fully identified — run.
+  _exposed(ctx, s, t, scale, mob) {
+    const I = s.intel;
+    const w = (mob ? 132 : 176) * scale, h = 52 * scale;
+    const x = mob ? 10 : 16 * scale;
+    const y = mob ? this._bannerBottom + 92 * scale : 122 * scale;
+    const full = I.level >= I.max;
+    this._panel(ctx, x, y, w, h, 8, full ? PALETTE.red : null);
+    this._exposedBottom = y + h;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = full ? PALETTE.red : PALETTE.gray; ctx.font = `700 ${9.5 * scale}px system-ui`;
+    ctx.fillText(t.exposed.toUpperCase(), x + 12 * scale, y + 15 * scale);
+    // 5 clue slots
+    const slot = (w - 24 * scale) / 5;
+    const labels = [t.clueTop, t.clueHat, t.clueBag, t.clueGlasses, t.cluePants];
+    for (let i = 0; i < 5; i++) {
+      const sx = x + 12 * scale + i * slot, sy = y + 21 * scale, sw = slot - 4 * scale, sh = 14 * scale;
+      const c = I.clues[i], rev = i < I.level;
+      if (!rev) {
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'; rrect(ctx, sx, sy, sw, sh, 3); ctx.fill();
+        ctx.fillStyle = 'rgba(154,163,173,0.5)'; ctx.font = `700 ${9 * scale}px system-ui`;
+        ctx.textAlign = 'center'; ctx.fillText('?', sx + sw / 2, sy + 10.5 * scale); ctx.textAlign = 'left';
+        continue;
+      }
+      if (c.color && (c.k === 'top' || c.k === 'pants' || c.has)) {
+        ctx.fillStyle = c.color; rrect(ctx, sx, sy, sw, sh, 3); ctx.fill();
+        ctx.strokeStyle = PALETTE.amber; ctx.lineWidth = 1.2; rrect(ctx, sx, sy, sw, sh, 3); ctx.stroke();
+      } else {
+        ctx.fillStyle = 'rgba(255,193,7,0.16)'; rrect(ctx, sx, sy, sw, sh, 3); ctx.fill();
+        ctx.strokeStyle = PALETTE.amber; ctx.lineWidth = 1.2; rrect(ctx, sx, sy, sw, sh, 3); ctx.stroke();
+        ctx.fillStyle = PALETTE.amber; ctx.font = `700 ${7.5 * scale}px system-ui`;
+        ctx.textAlign = 'center';
+        ctx.fillText(c.has === false ? '✕' : labels[i].slice(0, 3), sx + sw / 2, sy + 10 * scale);
+        ctx.textAlign = 'left';
+      }
+    }
+    // next-clue progress
+    const bw = w - 24 * scale;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, x + 12 * scale, y + h - 9 * scale, bw, 3.5 * scale, 2); ctx.fill();
+    ctx.fillStyle = full ? PALETTE.red : PALETTE.amber;
+    rrect(ctx, x + 12 * scale, y + h - 9 * scale, bw * Math.min(1, I.frac), 3.5 * scale, 2); ctx.fill();
+  }
+
+  _joystick(ctx, joy) {
+    ctx.strokeStyle = 'rgba(242,241,236,0.35)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 44, 0, 7); ctx.stroke();
+    const dx = joy.x - joy.ox, dy = joy.y - joy.oy;
+    const m = Math.hypot(dx, dy) || 1, r = Math.min(m, 44);
+    ctx.fillStyle = 'rgba(242,241,236,0.5)';
+    ctx.beginPath(); ctx.arc(joy.ox + (dx / m) * r, joy.oy + (dy / m) * r, 20, 0, 7); ctx.fill();
+  }
+
+  _pauseBtn(ctx, vw, scale, mob) {
+    const sz = 38 * scale, x = vw - sz - 10, y = mob ? this._bannerBottom + 56 * scale : 84 * scale;
+    this._panel(ctx, x, y, sz, sz, 8);
+    ctx.fillStyle = PALETTE.offwhite;
+    ctx.fillRect(x + sz * 0.32, y + sz * 0.28, sz * 0.12, sz * 0.44);
+    ctx.fillRect(x + sz * 0.56, y + sz * 0.28, sz * 0.12, sz * 0.44);
+    this._hits.push({ type: 'pause', x: x - 6, y: y - 6, w: sz + 12, h: sz + 12 });
+  }
+
+  // FAKERS ● ●  —  ○ ○ WATCHER round pips beside the countdown box
+  _matchStrip(ctx, vw, s, t, scale, mob) {
+    const y = (this._countBottom || 128 * scale) + 16 * scale;
+    ctx.font = `800 ${11 * scale}px system-ui`;
+    const pip = (x, on, col) => {
+      ctx.beginPath(); ctx.arc(x, y - 4 * scale, 4.5 * scale, 0, 7);
+      ctx.fillStyle = on ? col : 'rgba(154,163,173,0.3)'; ctx.fill();
+    };
+    const cx = vw / 2;
+    ctx.textAlign = 'right'; ctx.fillStyle = PALETTE.green;
+    ctx.fillText(s.teamFakers, cx - 46 * scale, y);
+    for (let i = 0; i < s.matchTarget; i++) pip(cx - 30 * scale + i * 14 * scale, i < s.wins.fakers, PALETTE.green);
+    ctx.textAlign = 'center'; ctx.fillStyle = PALETTE.gray; ctx.fillText('—', cx + 4 * scale, y);
+    for (let i = 0; i < s.matchTarget; i++) pip(cx + 22 * scale + i * 14 * scale, i < s.wins.watcher, PALETTE.red);
+    ctx.textAlign = 'left'; ctx.fillStyle = PALETTE.red;
+    ctx.fillText(s.teamWatcher, cx + 22 * scale + s.matchTarget * 14 * scale + 4 * scale, y);
+  }
+
+  _score(ctx, s, t, scale, mob) {
+    const w = (mob ? 132 : 176) * scale, h = (mob ? 28 : 34) * scale, x = mob ? 10 : 16 * scale;
+    const y = mob ? this._bannerBottom + 58 * scale : 82 * scale;
+    this._panel(ctx, x, y, w, h, 8);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${10 * scale}px system-ui`;
+    ctx.fillText(s.scoreWord.toUpperCase(), x + 12 * scale, y + (mob ? 19 : 21) * scale);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = PALETTE.offwhite; ctx.font = `900 ${(mob ? 13 : 16) * scale}px "Arial Black", Arial`;
+    ctx.fillText(String(s.score), x + w - 12 * scale, y + (mob ? 20 : 23) * scale);
+  }
+
+  _popups(ctx, vw, vh, s, scale) {
+    ctx.textAlign = 'center';
+    for (let i = 0; i < s.popups.length; i++) {
+      const p = s.popups[i];
+      const a = Math.min(1, p.t / (p.max * 0.4));
+      const rise = (1 - p.t / p.max) * 26 * scale;
+      ctx.globalAlpha = a;
+      ctx.font = `900 ${17 * scale}px "Arial Black", Arial, sans-serif`;
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(14,22,33,0.85)';
+      const y = vh * 0.42 - i * 24 * scale - rise;
+      ctx.strokeText(p.text, vw / 2, y);
+      ctx.fillStyle = p.color; ctx.fillText(p.text, vw / 2, y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  _spectate(ctx, vw, vh, s, t, scale) {
+    const w = Math.min(420 * scale, vw - 16), h = 36 * scale, x = vw / 2 - w / 2, y = vh - h - 18 * scale;
+    this._panel(ctx, x, y, w, h, 8, 'rgba(255,193,7,0.6)');
+    ctx.textAlign = 'center';
+    ctx.fillStyle = PALETTE.amber; ctx.font = `800 ${13 * scale}px system-ui`;
+    ctx.fillText(s.spectating, vw / 2, y + 23 * scale);
+  }
+
+  _interlude(ctx, vw, vh, s, t, scale) {
+    const il = s.interlude;
+    ctx.fillStyle = 'rgba(10,15,22,0.5)';
+    ctx.fillRect(0, 0, vw, vh);
+    const w = 380 * scale, h = 150 * scale, x = vw / 2 - w / 2, y = vh / 2 - h / 2 - 20 * scale;
+    this._panel(ctx, x, y, w, h, 14, il.win ? PALETTE.green : PALETTE.red);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = il.win ? PALETTE.green : PALETTE.red;
+    ctx.font = `900 ${26 * scale}px "Arial Black", Arial`;
+    ctx.fillText(il.title, vw / 2, y + 44 * scale);
+    ctx.fillStyle = PALETTE.offwhite; ctx.font = `800 ${20 * scale}px system-ui`;
+    ctx.fillText(il.score, vw / 2, y + 82 * scale);
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${12 * scale}px system-ui`;
+    ctx.fillText(il.next, vw / 2, y + 112 * scale);
+    // next-round progress line
+    const bw = w - 60 * scale;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, x + 30 * scale, y + h - 24 * scale, bw, 6 * scale, 3); ctx.fill();
+    ctx.fillStyle = PALETTE.amber; rrect(ctx, x + 30 * scale, y + h - 24 * scale, bw * (1 - il.frac), 6 * scale, 3); ctx.fill();
+  }
+
+  _fakersLeft(ctx, vw, s, t, scale, mob) {
+    const w = (mob ? 132 : 200) * scale, h = (mob ? 44 : 58) * scale, x = vw - w - (mob ? 10 : 16 * scale);
+    const y = mob ? this._bannerBottom + 8 * scale : 16 * scale;
+    this._panel(ctx, x, y, w, h);
+    ctx.textAlign = 'left';
+    if (mob) {
+      ctx.fillStyle = PALETTE.red; ctx.font = `800 ${16 * scale}px system-ui`;
+      ctx.fillText(`${s.fakersAlive}/${s.fakersTotal}`, x + 12 * scale, y + 28 * scale);
+      for (let i = 0; i < s.fakersTotal; i++) {
+        const dx = x + w - 14 * scale - i * 13 * scale;
+        ctx.fillStyle = i < s.fakersAlive ? PALETTE.red : 'rgba(154,163,173,0.35)';
+        ctx.beginPath(); ctx.arc(dx, y + 18 * scale, 3 * scale, 0, 7); ctx.fill();
+        ctx.fillRect(dx - 2.5 * scale, y + 21 * scale, 5 * scale, 8 * scale);
+      }
+      return;
+    }
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${11 * scale}px system-ui`;
+    ctx.fillText(t.fakersLeft.toUpperCase(), x + 14 * scale, y + 22 * scale);
+    ctx.fillStyle = PALETTE.red; ctx.font = `800 ${24 * scale}px system-ui`;
+    ctx.fillText(`${s.fakersAlive}`, x + 14 * scale, y + 46 * scale);
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${14 * scale}px system-ui`;
+    ctx.fillText(`/ ${s.fakersTotal}`, x + 44 * scale, y + 46 * scale);
+    // little person icons
+    for (let i = 0; i < s.fakersTotal; i++) {
+      const dx = x + w - 16 * scale - i * 18 * scale;
+      ctx.fillStyle = i < s.fakersAlive ? PALETTE.red : 'rgba(154,163,173,0.35)';
+      ctx.beginPath(); ctx.arc(dx, y + 24 * scale, 3.5 * scale, 0, 7); ctx.fill();
+      ctx.fillRect(dx - 3 * scale, y + 28 * scale, 6 * scale, 10 * scale);
+    }
+  }
+
+  _watchHint(ctx, vw, vh, s, t, scale) {
+    const red = s.light.phase === 'red';
+    const w = Math.min(460 * scale, vw - 16), h = 40 * scale, x = vw / 2 - w / 2, y = vh - h - 18 * scale;
+    ctx.fillStyle = red ? 'rgba(46,12,12,0.9)' : 'rgba(14,22,33,0.85)';
+    rrect(ctx, x, y, w, h, 10); ctx.fill();
+    ctx.strokeStyle = red ? PALETTE.red : 'rgba(154,163,173,0.28)'; ctx.lineWidth = 1.4;
+    rrect(ctx, x, y, w, h, 10); ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = red ? PALETTE.red : PALETTE.offwhite; ctx.font = `800 ${13 * scale}px system-ui`;
+    ctx.fillText(s.hint, vw / 2, y + 18 * scale);
+    ctx.fillStyle = PALETTE.gray; ctx.font = `600 ${11 * scale}px system-ui`;
+    ctx.fillText(`${s.pinHint}   ·   ${t.pinned}: ${s.pinsCount}`, vw / 2, y + 33 * scale);
+  }
+
+  _missions(ctx, vw, s, t, scale) {
+    const rows = s.missions;
+    const w = Math.min(240 * scale, vw * 0.56), rowH = 26 * scale, h = 42 * scale + rows.length * rowH;
+    const x = this.mob ? 10 : 16 * scale;
+    const y = this._exposedBottom ? this._exposedBottom + 8 * scale : (this.mob ? this._bannerBottom + 94 * scale : 124 * scale);
+    this._panel(ctx, x, y, w, h);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.amber; ctx.font = `800 ${11 * scale}px system-ui`;
+    ctx.fillText(s.missionsTitle.toUpperCase(), x + 14 * scale, y + 20 * scale);
+    ctx.fillStyle = PALETTE.gray; ctx.font = `600 ${9 * scale}px system-ui`;
+    ctx.fillText(s.missionsHint || '', x + 14 * scale, y + 33 * scale);
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i], ry = y + 48 * scale + i * rowH;
+      ctx.strokeStyle = r.done ? PALETTE.green : 'rgba(154,163,173,0.6)'; ctx.lineWidth = 1.5;
+      rrect(ctx, x + 14 * scale, ry - 9 * scale, 11 * scale, 11 * scale, 2); ctx.stroke();
+      if (r.done) { ctx.strokeStyle = PALETTE.green; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 16 * scale, ry - 3.5 * scale); ctx.lineTo(x + 19 * scale, ry - 0.5 * scale); ctx.lineTo(x + 24 * scale, ry - 7 * scale); ctx.stroke(); }
+      ctx.fillStyle = r.done ? PALETTE.green : PALETTE.offwhite;
+      ctx.font = `${r.done ? 600 : 500} ${10.5 * scale}px system-ui`;
+      ctx.fillText(clip(ctx, r.label, w - 44 * scale), x + 32 * scale, ry);
+      // hold progress bar (fills only during red in the zone)
+      const bw = w - 46 * scale, bx = x + 32 * scale, by = ry + 4 * scale;
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, bx, by, bw, 4 * scale, 2); ctx.fill();
+      if (r.frac > 0) {
+        ctx.fillStyle = r.done ? PALETTE.green : PALETTE.amber;
+        rrect(ctx, bx, by, bw * Math.min(1, r.frac), 4 * scale, 2); ctx.fill();
+      }
+    }
+  }
+
+  // Board style: dark navy card, thin stroke, corner tick brackets, optional glow.
+  _panel(ctx, x, y, w, h, r = 10, accent = null) {
+    ctx.fillStyle = 'rgba(13,20,30,0.86)';
+    rrect(ctx, x, y, w, h, r); ctx.fill();
+    if (accent) { ctx.save(); ctx.shadowColor = accent; ctx.shadowBlur = 14; }
+    ctx.strokeStyle = accent || 'rgba(154,163,173,0.3)'; ctx.lineWidth = accent ? 1.6 : 1;
+    rrect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, r); ctx.stroke();
+    if (accent) ctx.restore();
+    // corner ticks
+    const tk = Math.min(9, h / 4), pad = 5;
+    ctx.strokeStyle = accent || 'rgba(154,163,173,0.55)'; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x + pad, y + pad + tk); ctx.lineTo(x + pad, y + pad); ctx.lineTo(x + pad + tk, y + pad);
+    ctx.moveTo(x + w - pad - tk, y + pad); ctx.lineTo(x + w - pad, y + pad); ctx.lineTo(x + w - pad, y + pad + tk);
+    ctx.moveTo(x + w - pad, y + h - pad - tk); ctx.lineTo(x + w - pad, y + h - pad); ctx.lineTo(x + w - pad - tk, y + h - pad);
+    ctx.moveTo(x + pad + tk, y + h - pad); ctx.lineTo(x + pad, y + h - pad); ctx.lineTo(x + pad, y + h - pad - tk);
+    ctx.stroke();
+  }
+
+  _banner(ctx, vw, s, t, scale, mob) {
+    const ph = s.light.phase;
+    const isRed = ph === 'red', isWarn = ph === 'warning';
+    const color = isRed ? PALETTE.red : isWarn ? PALETTE.amber : PALETTE.green;
+    const title = isRed ? t.red : isWarn ? t.warn : t.green;
+    const sub = isRed ? t.redSub : isWarn ? t.warnSub : t.greenSub;
+
+    const w = Math.min(420 * scale, vw - (mob ? 16 : 32)), h = (mob ? 62 : 76) * scale;
+    const x = vw / 2 - w / 2, y = (mob ? 8 : 16) * scale;
+    this._bannerBottom = y + h;
+    this._panel(ctx, x, y, w, h, 12, isRed ? PALETTE.red : isWarn ? 'rgba(255,193,7,0.7)' : null);
+
+    // signal icon (pedestrian figure in a lamp)
+    const iconX = x + 34 * scale, iconY = y + h / 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, iconX - 16 * scale, y + 12 * scale, 32 * scale, h - 24 * scale, 6); ctx.fill();
+    drawPedestrian(ctx, iconX, iconY, 11 * scale, color, isRed);
+
+    // Colorblind assist: a distinct shape per state (circle/triangle/square).
+    if (s.colorblind) {
+      ctx.fillStyle = color;
+      const sx = x + w - 90 * scale, sy = y + 20 * scale, r = 7 * scale;
+      ctx.beginPath();
+      if (ph === 'green') { ctx.arc(sx, sy, r, 0, 7); }
+      else if (ph === 'warning') { ctx.moveTo(sx, sy - r); ctx.lineTo(sx + r, sy + r); ctx.lineTo(sx - r, sy + r); ctx.closePath(); }
+      else { ctx.rect(sx - r, sy - r, r * 2, r * 2); }
+      ctx.fill();
+    }
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = color;
+    ctx.font = `900 ${(mob ? 24 : 30) * scale}px "Arial Black", Arial, sans-serif`;
+    ctx.fillText(title, x + 60 * scale, y + (mob ? 34 : 40) * scale);
+    ctx.fillStyle = PALETTE.offwhite;
+    ctx.font = `600 ${12 * scale}px system-ui, sans-serif`;
+    ctx.fillText(sub, x + 60 * scale, y + (mob ? 50 : 58) * scale);
+
+    // boxed phase countdown below the banner (board style)
+    const cw = 104 * scale, chh = (mob ? 30 : 36) * scale, cy = y + h + 8 * scale;
+    this._countBottom = cy + chh;
+    this._panel(ctx, vw / 2 - cw / 2, cy, cw, chh, 8, isRed ? PALETTE.red : null);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = color;
+    ctx.font = `900 ${(mob ? 18 : 22) * scale}px "Arial Black", Arial, sans-serif`;
+    ctx.fillText(fmtCount(s.light.timeLeft), vw / 2, cy + (mob ? 21 : 26) * scale);
+
+    // round timer chip: inside the banner on mobile, beside the box on desktop
+    ctx.fillStyle = 'rgba(242,241,236,0.75)';
+    ctx.font = `700 ${12 * scale}px system-ui, sans-serif`;
+    if (mob) {
+      ctx.textAlign = 'right';
+      ctx.fillText('⏱ ' + fmtTime(s.roundLeft), x + w - 12 * scale, y + 22 * scale);
+    } else {
+      ctx.textAlign = 'left';
+      ctx.fillText('⏱ ' + fmtTime(s.roundLeft), vw / 2 + cw / 2 + 12 * scale, cy + 23 * scale);
+    }
+  }
+
+  _marks(ctx, s, t, scale, mob) {
+    const w = (mob ? 132 : 176) * scale, h = (mob ? 44 : 58) * scale, x = mob ? 10 : 16 * scale;
+    const y = mob ? this._bannerBottom + 8 * scale : 16 * scale;
+    this._panel(ctx, x, y, w, h);
+    ctx.textAlign = 'left';
+    drawEye(ctx, x + 20 * scale, y + (mob ? 22 : 22) * scale, 8 * scale, PALETTE.offwhite);
+    if (!mob) {
+      ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${11 * scale}px system-ui`;
+      ctx.fillText(t.marks.toUpperCase(), x + 38 * scale, y + 25 * scale);
+    }
+    // dots
+    const dotY = y + (mob ? 22 : 42) * scale, dot0 = x + (mob ? 40 : 20) * scale, gap = (mob ? 15 : 26) * scale;
+    for (let i = 0; i < s.maxMarks; i++) {
+      const dx = dot0 + i * gap;
+      ctx.beginPath(); ctx.arc(dx, dotY, (mob ? 5 : 7) * scale, 0, 7);
+      ctx.fillStyle = i < s.marks ? PALETTE.red : 'rgba(154,163,173,0.35)';
+      ctx.fill();
+    }
+    if (!mob) {
+      ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${12 * scale}px system-ui`;
+      ctx.fillText('/ ' + s.maxMarks, dot0 + s.maxMarks * gap, dotY + 4 * scale);
+    }
+  }
+
+  _status(ctx, vw, s, t, scale, mob) {
+    const w = (mob ? 132 : 200) * scale, h = (mob ? 44 : 58) * scale, x = vw - w - (mob ? 10 : 16 * scale);
+    const y = mob ? this._bannerBottom + 8 * scale : 16 * scale;
+    this._panel(ctx, x, y, w, h);
+    ctx.textAlign = 'left';
+    if (mob) {
+      ctx.fillStyle = PALETTE.green; ctx.font = `800 ${15 * scale}px system-ui`;
+      ctx.fillText(fmtTime(s.survival), x + 12 * scale, y + 20 * scale);
+      const bw = w - 24 * scale, bx = x + 12 * scale, by = y + 28 * scale;
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, bx, by, bw, 8 * scale, 4); ctx.fill();
+      ctx.fillStyle = PALETTE.green; rrect(ctx, bx, by, bw * clamp01(s.progress), 8 * scale, 4); ctx.fill();
+      return;
+    }
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${11 * scale}px system-ui`;
+    ctx.fillText(t.survival.toUpperCase(), x + 14 * scale, y + 22 * scale);
+    ctx.fillStyle = PALETTE.green; ctx.font = `800 ${20 * scale}px system-ui`;
+    ctx.fillText(fmtTime(s.survival), x + 14 * scale, y + 44 * scale);
+
+    // objective progress bar (to gate)
+    ctx.textAlign = 'right';
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${10 * scale}px system-ui`;
+    ctx.fillText(t.objective.toUpperCase(), x + w - 14 * scale, y + 22 * scale);
+    const bw = 96 * scale, bx = x + w - 14 * scale - bw, by = y + 32 * scale;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; rrect(ctx, bx, by, bw, 10 * scale, 5); ctx.fill();
+    ctx.fillStyle = PALETTE.green; rrect(ctx, bx, by, bw * clamp01(s.progress), 10 * scale, 5); ctx.fill();
+  }
+
+  _actionBar(ctx, vw, vh, s, t, scale) {
+    const n = s.actions.length;
+    const mob = this.mob;
+    const gap = (mob ? 5 : 8) * scale;
+    const cell = mob ? Math.min(56, (vw - 20 - gap * (n - 1) - 16) / n) : 62 * scale;
+    const w = n * cell + (n - 1) * gap + (mob ? 16 : 24 * scale);
+    const h = cell + (mob ? 24 : 16 * scale) + 6;
+    const x = vw / 2 - w / 2, y = vh - h - (mob ? 10 : 16 * scale);
+    this._panel(ctx, x, y, w, h);
+    ctx.textAlign = 'center';
+    if (!mob) {
+      ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${10 * scale}px system-ui`;
+      ctx.fillText('DISGUISE / MIMIC', vw / 2, y + 15 * scale);
+    }
+
+    for (let i = 0; i < n; i++) {
+      const a = s.actions[i];
+      const cx = x + (this.mob ? 8 : 12 * scale) + i * (cell + gap);
+      const cy = y + (this.mob ? 8 : 22 * scale);
+      this._hits.push({ type: 'action', id: a.id, x: cx - 2, y: cy - 2, w: cell + 4, h: cell + 4 });
+      const active = s.activeActionId === a.id;
+      const valid = a.valid;
+      ctx.fillStyle = active ? 'rgba(229,57,53,0.35)' : valid ? 'rgba(46,204,113,0.16)' : 'rgba(0,0,0,0.3)';
+      rrect(ctx, cx, cy, cell, cell - 4 * scale, 8); ctx.fill();
+      ctx.strokeStyle = active ? PALETTE.red : valid ? PALETTE.green : 'rgba(154,163,173,0.3)';
+      ctx.lineWidth = active ? 2 : 1;
+      rrect(ctx, cx, cy, cell, cell - 4 * scale, 8); ctx.stroke();
+
+      drawActionIcon(ctx, a.icon, cx + cell / 2, cy + 22 * scale, 12 * scale, valid ? PALETTE.offwhite : PALETTE.gray);
+      // label
+      ctx.fillStyle = valid ? PALETTE.offwhite : PALETTE.gray;
+      ctx.font = `600 ${9.5 * scale}px system-ui`;
+      ctx.fillText(s.lang === 'ja' ? a.labelJA : a.labelEN, cx + cell / 2, cy + cell - 8 * scale);
+      // key badge (pointless on touch)
+      if (!this.mob) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; rrect(ctx, cx + cell - 16 * scale, cy + 3 * scale, 13 * scale, 13 * scale, 3); ctx.fill();
+        ctx.fillStyle = PALETTE.offwhite; ctx.font = `700 ${9 * scale}px system-ui`;
+        ctx.fillText(a.key, cx + cell - 9.5 * scale, cy + 13 * scale);
+      }
+
+      // active pose progress
+      if (active && s.actionProgress != null) {
+        ctx.fillStyle = PALETTE.red; ctx.fillRect(cx, cy + cell - 8 * scale, cell * (1 - s.actionProgress), 3 * scale);
+      }
+    }
+  }
+
+  _sync(ctx, vh, s, t, scale, mob) {
+    const w = (mob ? 64 : 132) * scale, h = (mob ? 64 : 78) * scale;
+    const x = mob ? 10 : 16 * scale;
+    const y = mob ? vh - h - 128 * scale : vh - h - 16 * scale;
+    this._panel(ctx, x, y, w, h, mob ? 14 : 10, mob && s.syncReady ? PALETTE.green : null);
+    this._hits.push({ type: 'sync', x: x - 6, y: y - 6, w: w + 12, h: h + 12 });
+    if (mob) {
+      const rx = x + w / 2, ry = y + h / 2, rr2 = 20 * scale;
+      ctx.lineWidth = 4.5 * scale;
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath(); ctx.arc(rx, ry, rr2, 0, 7); ctx.stroke();
+      ctx.strokeStyle = s.syncReady ? PALETTE.green : PALETTE.amber;
+      ctx.beginPath(); ctx.arc(rx, ry, rr2, -Math.PI / 2, -Math.PI / 2 + s.syncCooldownFrac * Math.PI * 2); ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = s.syncReady ? PALETTE.green : PALETTE.amber;
+      ctx.font = `800 ${14 * scale}px system-ui`;
+      ctx.fillText(s.syncReady ? 'SYNC' : Math.ceil(s.syncSecondsLeft) + 's', rx, ry + 5 * scale);
+      return;
+    }
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.gray; ctx.font = `700 ${11 * scale}px system-ui`;
+    ctx.fillText(t.sync.toUpperCase(), x + 14 * scale, y + 18 * scale);
+
+    // ring
+    const rx = x + 34 * scale, ry = y + 48 * scale, rr = 20 * scale;
+    ctx.lineWidth = 5 * scale;
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath(); ctx.arc(rx, ry, rr, 0, 7); ctx.stroke();
+    ctx.strokeStyle = s.syncReady ? PALETTE.green : PALETTE.amber;
+    ctx.beginPath(); ctx.arc(rx, ry, rr, -Math.PI / 2, -Math.PI / 2 + s.syncCooldownFrac * Math.PI * 2); ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = s.syncReady ? PALETTE.green : PALETTE.amber;
+    ctx.font = `800 ${13 * scale}px system-ui`;
+    ctx.fillText(s.syncReady ? 'E' : Math.ceil(s.syncSecondsLeft) + 's', rx, ry + 5 * scale);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.offwhite; ctx.font = `600 ${10 * scale}px system-ui`;
+    ctx.fillText(s.syncReady ? t.ready : t.cooling, x + 62 * scale, y + 44 * scale);
+    ctx.fillStyle = PALETTE.gray; ctx.font = `500 ${9 * scale}px system-ui`;
+    ctx.fillText('near NPC', x + 62 * scale, y + 58 * scale);
+  }
+
+  _penalty(ctx, vw, vh, s, t, scale) {
+    if (!s.penalty) return;
+    const w = 150 * scale, h = 54 * scale, x = vw - w - 16 * scale, y = vh - h - 16 * scale;
+    ctx.globalAlpha = 0.7 + 0.3 * Math.sin(s.time * 10);
+    ctx.fillStyle = 'rgba(40,26,8,0.9)'; rrect(ctx, x, y, w, h, 10); ctx.fill();
+    ctx.strokeStyle = PALETTE.amber; ctx.lineWidth = 2; rrect(ctx, x, y, w, h, 10); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = PALETTE.amber; ctx.textAlign = 'left';
+    ctx.font = `800 ${13 * scale}px system-ui`;
+    ctx.fillText('⚠ ' + t.penaltyT, x + 12 * scale, y + 24 * scale);
+    ctx.fillStyle = PALETTE.offwhite; ctx.font = `600 ${10 * scale}px system-ui`;
+    ctx.fillText(t.penaltySub, x + 12 * scale, y + 40 * scale);
+  }
+}
+
+// ---------- icon helpers ----------
+function drawPedestrian(ctx, cx, cy, r, color, standing) {
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(cx, cy - r * 0.9, r * 0.45, 0, 7); ctx.fill(); // head
+  ctx.lineWidth = r * 0.45; ctx.strokeStyle = color; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r * 0.4); ctx.lineTo(cx, cy + r * 0.3);           // torso
+  if (standing) {
+    ctx.moveTo(cx, cy + r * 0.3); ctx.lineTo(cx - r * 0.4, cy + r);
+    ctx.moveTo(cx, cy + r * 0.3); ctx.lineTo(cx + r * 0.4, cy + r);
+    ctx.moveTo(cx - r * 0.5, cy - r * 0.2); ctx.lineTo(cx + r * 0.5, cy - r * 0.2);
+  } else { // walking pose
+    ctx.moveTo(cx, cy + r * 0.3); ctx.lineTo(cx - r * 0.55, cy + r);
+    ctx.moveTo(cx, cy + r * 0.3); ctx.lineTo(cx + r * 0.3, cy + r);
+    ctx.moveTo(cx - r * 0.5, cy - r * 0.1); ctx.lineTo(cx + r * 0.55, cy - r * 0.35);
+  }
+  ctx.stroke();
+}
+
+function drawEye(ctx, cx, cy, r, color) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy); ctx.quadraticCurveTo(cx, cy - r * 0.9, cx + r, cy);
+  ctx.quadraticCurveTo(cx, cy + r * 0.9, cx - r, cy); ctx.stroke();
+  ctx.fillStyle = PALETTE.red; ctx.beginPath(); ctx.arc(cx, cy, r * 0.34, 0, 7); ctx.fill();
+}
+
+function drawActionIcon(ctx, kind, cx, cy, r, color) {
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.8;
+  switch (kind) {
+    case 'phone':
+      rrect(ctx, cx - r * 0.45, cy - r, r * 0.9, r * 2, 3); ctx.stroke();
+      ctx.fillRect(cx - r * 0.28, cy - r * 0.7, r * 0.56, r * 1.2); break;
+    case 'shop':
+      ctx.strokeRect(cx - r, cy - r * 0.8, r * 2, r * 1.6);
+      ctx.beginPath(); ctx.moveTo(cx, cy - r * 0.8); ctx.lineTo(cx, cy + r * 0.8); ctx.stroke(); break;
+    case 'vending':
+      rrect(ctx, cx - r * 0.7, cy - r, r * 1.4, r * 2, 3); ctx.stroke();
+      ctx.fillRect(cx - r * 0.4, cy - r * 0.7, r * 0.8, r * 0.5);
+      ctx.fillRect(cx + r * 0.1, cy + r * 0.2, r * 0.4, r * 0.5); break;
+    case 'bench':
+      ctx.fillRect(cx - r, cy - r * 0.1, r * 2, r * 0.5);
+      ctx.fillRect(cx - r, cy + r * 0.4, r * 0.3, r * 0.6);
+      ctx.fillRect(cx + r * 0.7, cy + r * 0.4, r * 0.3, r * 0.6); break;
+    case 'sign':
+      ctx.fillRect(cx - r * 0.12, cy - r, r * 0.24, r * 2);
+      rrect(ctx, cx - r * 0.8, cy - r, r * 1.6, r * 0.8, 2); ctx.fill(); break;
+    case 'look':
+      drawEye(ctx, cx, cy, r, color); break;
+  }
+}
+
+function rrect(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function fmtTime(sec) {
+  sec = Math.max(0, sec | 0);
+  const m = (sec / 60) | 0, s = sec % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+// Phase countdown in the board's boxed style: 00:07
+function fmtCount(sec) {
+  const s = Math.max(0, Math.ceil(sec));
+  return '00:' + String(s).padStart(2, '0');
+}
+function clip(ctx, text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  let s = text;
+  while (s.length > 1 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1);
+  return s + '…';
+}
