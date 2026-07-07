@@ -131,6 +131,14 @@ export class Game {
     this.last = now;
     if (raw > 0.05) raw = 0.05;
     this.time += raw;
+
+    if (this.state === 'online' && this.online) {
+      this.online.frame(raw);
+      this.input.endFrame();
+      requestAnimationFrame(this._loop);
+      return;
+    }
+
     this.flash = Math.max(0, this.flash - raw * 2.2);
     this._updateFx(raw);
     const dt = raw * this.timeScale;
@@ -140,6 +148,9 @@ export class Game {
     this.input.endFrame();
     requestAnimationFrame(this._loop);
   }
+
+  enterOnline(match) { this.online = match; this.state = 'online'; this.ui.hideAll(); }
+  exitOnline() { if (this.online) { this.online.dispose(); this.online = null; } this.state = 'menu'; }
 
   // Screen-feel: slow-mo, flash, banner timers, and the hunted-lock threat loop.
   _updateFx(raw) {

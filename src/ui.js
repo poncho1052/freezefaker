@@ -34,6 +34,8 @@ export class Ui {
     this.screens = {};
     this.screens.title = this._titleScreen();
     this.screens.modeselect = this._modeScreen();
+    this.screens.online = this._onlineScreen();
+    this.screens.lobby = this._lobbyScreen();
     this.screens.howto = this._howToScreen();
     this.screens.settings = this._settingsScreen();
     this.screens.pause = this._pauseScreen();
@@ -63,12 +65,14 @@ export class Ui {
       <p class="subtitle" data-i="subtitle"></p>
       <div class="menu">
         <button class="btn primary" data-act="play"><span data-i="play"></span></button>
+        <button class="btn accent" data-act="online"><span data-i="online"></span></button>
         <button class="btn" data-act="tutorial"><span data-i="tutorial"></span></button>
         <button class="btn ghost" data-act="howto"><span data-i="howto"></span></button>
         <button class="btn ghost" data-act="settings"><span data-i="settings"></span></button>
       </div>
       <div class="credits">Freeze Faker — prototype build</div>`;
     el.querySelector('[data-act=play]').onclick = () => this.show('modeselect');
+    el.querySelector('[data-act=online]').onclick = () => this.show('online');
     el.querySelector('[data-act=tutorial]').onclick = () => this.cb.tutorial?.();
     el.querySelector('[data-act=howto]').onclick = () => this.show('howto');
     el.querySelector('[data-act=settings]').onclick = () => { this._returnTo = 'title'; this.show('settings'); };
@@ -96,6 +100,78 @@ export class Ui {
     el.querySelector('[data-act=back]').onclick = () => this.show('title');
     return el;
   }
+
+  _onlineScreen() {
+    const el = div('screen');
+    el.innerHTML = `
+      <div class="logo small"><span class="freeze">FREEZE</span><span class="faker glitch">FAKER</span></div>
+      <h2 class="mode-h" data-i="onlineTitle" style="letter-spacing:.12em;text-transform:uppercase;z-index:1"></h2>
+      <div class="online-wrap">
+        <input class="tf" data-ctl="name" maxlength="16" data-ph="yourName" />
+        <div class="online-cols">
+          <div class="online-card">
+            <div class="oc-ic">👁</div><h3 data-i="createRoom"></h3><p data-i="createHint"></p>
+            <button class="btn primary" data-act="create"><span data-i="createRoom"></span></button>
+          </div>
+          <div class="online-card">
+            <div class="oc-ic">🚶</div><h3 data-i="joinRoom"></h3><p data-i="joinHint"></p>
+            <input class="tf code" data-ctl="code" maxlength="4" data-ph="roomCodePh" />
+            <button class="btn" data-act="join"><span data-i="joinRoom"></span></button>
+          </div>
+        </div>
+        <div class="online-err" data-r="err"></div>
+      </div>
+      <div class="actions"><button class="btn ghost" data-act="back"><span data-i="back"></span></button></div>`;
+    const name = () => (el.querySelector('[data-ctl=name]').value.trim() || 'Player');
+    el.querySelector('[data-act=create]').onclick = () => { this.lobbyError(''); this.cb.onlineCreate?.(name()); };
+    el.querySelector('[data-act=join]').onclick = () => { this.lobbyError(''); const code = el.querySelector('[data-ctl=code]').value.trim().toUpperCase(); this.cb.onlineJoin?.(name(), code); };
+    el.querySelector('[data-act=back]').onclick = () => this.show('title');
+    return el;
+  }
+
+  _lobbyScreen() {
+    const el = div('screen');
+    el.innerHTML = `
+      <div class="panel lobby-panel">
+        <h2>${eyeMini()} <span data-i="lobby"></span></h2>
+        <div class="room-code"><span data-i="roomCode"></span>: <b data-r="code">----</b></div>
+        <div class="player-list" data-r="players"></div>
+        <div class="lobby-hint" data-r="hint"></div>
+      </div>
+      <div class="actions">
+        <button class="btn" data-act="ready"><span data-r="readyLabel"></span></button>
+        <button class="btn primary" data-act="start"><span data-i="startMatch"></span></button>
+        <button class="btn ghost" data-act="leave"><span data-i="leaveRoom"></span></button>
+      </div>`;
+    el.querySelector('[data-act=ready]').onclick = () => { this._ready = !this._ready; this.cb.lobbyReady?.(this._ready); };
+    el.querySelector('[data-act=start]').onclick = () => this.cb.lobbyStart?.();
+    el.querySelector('[data-act=leave]').onclick = () => this.cb.lobbyLeave?.();
+    return el;
+  }
+
+  showLobby(data, youId) {
+    const el = this.screens.lobby, t = this.t();
+    el.querySelector('[data-r=code]').textContent = data.code;
+    const isHost = data.host === youId;
+    const me = data.players.find((p) => p.id === youId);
+    this._ready = me ? me.ready : false;
+    el.querySelector('[data-r=players]').innerHTML = data.players.map((p) => {
+      const role = p.role === 'watcher' ? t.roleWatcher : t.roleFaker;
+      const tags = (p.id === data.host ? `<span class="tag host">${t.hostTag}</span>` : '')
+        + `<span class="tag ${p.role}">${role}</span>`
+        + (p.ready ? '<span class="tag ok">✓</span>' : '');
+      return `<div class="prow ${p.id === youId ? 'me' : ''}"><span class="pname">${escapeHtml(p.name)}</span><span class="ptags">${tags}</span></div>`;
+    }).join('');
+    el.querySelector('[data-r=readyLabel]').textContent = this._ready ? t.cancelReady : t.ready;
+    const startBtn = el.querySelector('[data-act=start]');
+    startBtn.style.display = isHost ? '' : 'none';
+    startBtn.disabled = data.players.length < 2;
+    el.querySelector('[data-act=ready]').style.display = isHost ? 'none' : '';
+    el.querySelector('[data-r=hint]').textContent = isHost ? (data.players.length < 2 ? t.needTwo : t.hostStartHint) : t.waitingHost;
+    this.show('lobby');
+  }
+
+  lobbyError(msg) { const e = this.screens.online.querySelector('[data-r=err]'); if (e) e.textContent = msg || ''; }
 
   _howToScreen() {
     const el = div('screen');
@@ -216,6 +292,7 @@ export class Ui {
   _fill() {
     const t = this.t();
     this.root.querySelectorAll('[data-i]').forEach((n) => { n.textContent = t[n.dataset.i] ?? n.dataset.i; });
+    this.root.querySelectorAll('[data-ph]').forEach((n) => { n.placeholder = t[n.dataset.ph] ?? n.dataset.ph; });
     this._syncControls();
   }
 
@@ -241,3 +318,4 @@ function card(titleKey, bodyKey) {
 function stat(k, v) {
   return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`;
 }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }

@@ -171,6 +171,16 @@ export const I18N = {
     faceCrowd: 'Face where the crowd faces',
     penaltyT: 'YOU LOOK HUMAN', penaltySub: 'Match the crowd’s stance',
     bSpotted: 'SPOTTED!', bClose: 'CLOSE!', bCaught: 'CAUGHT', bGotcha: 'GOTCHA!', bSafe: 'SURVIVED', bMiss: 'MISFIRE',
+    // online
+    online: 'Play Online', onlineTitle: 'Play with Friends',
+    yourName: 'Your name', createRoom: 'Create Room', roomCodePh: 'Room code', joinRoom: 'Join',
+    createHint: 'You’ll be the Watcher. Share the room code with friends.',
+    joinHint: 'Enter a friend’s room code to join as a Faker.',
+    lobby: 'Lobby', roomCode: 'Room Code', ready: 'Ready', cancelReady: 'Cancel', startMatch: 'Start Match',
+    leaveRoom: 'Leave', roleWatcher: 'Watcher', roleFaker: 'Faker', hostTag: 'HOST',
+    waitingHost: 'Waiting for the host to start…', needTwo: 'Need at least 2 players',
+    hostStartHint: 'You are the Watcher. Start when everyone is in.',
+    connecting: 'Connecting…', connFail: 'Could not reach the server. Is it running?',
     // watcher HUD / results
     fakersLeft: 'Fakers', accuseHint: 'RED LIGHT — click a suspect to accuse', pinHint: 'Right-click to pin a suspect',
     observeHint: 'GREEN — watch how they move', pinned: 'Pinned',
@@ -223,6 +233,16 @@ export const I18N = {
     faceCrowd: '群衆と同じ向きを向け',
     penaltyT: '人間っぽい', penaltySub: '群衆と同じ姿勢に',
     bSpotted: '見つかった！', bClose: 'あぶない！', bCaught: '御用', bGotcha: '確保！', bSafe: '逃げ切った', bMiss: '誤指摘',
+    // online
+    online: 'オンライン対戦', onlineTitle: '友達と遊ぶ',
+    yourName: '名前', createRoom: 'ルームを作る', roomCodePh: 'ルームコード', joinRoom: '参加',
+    createHint: 'あなたがWatcherになります。コードを友達に共有。',
+    joinHint: '友達のルームコードを入れてFakerとして参加。',
+    lobby: 'ロビー', roomCode: 'ルームコード', ready: '準備OK', cancelReady: '取消', startMatch: '開始',
+    leaveRoom: '退出', roleWatcher: 'Watcher', roleFaker: 'Faker', hostTag: 'ホスト',
+    waitingHost: 'ホストの開始を待っています…', needTwo: '2人以上必要です',
+    hostStartHint: 'あなたはWatcher。全員そろったら開始。',
+    connecting: '接続中…', connFail: 'サーバーに接続できません。起動していますか？',
     // watcher HUD / results
     fakersLeft: 'Faker', accuseHint: 'RED LIGHT — 怪しい人をクリックして指摘', pinHint: '右クリックでマーク',
     observeHint: 'GREEN — 動きをよく見ろ', pinned: 'マーク中',

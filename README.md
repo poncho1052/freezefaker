@@ -12,12 +12,40 @@ Freeze Faker は、NPCの群衆に紛れた人間プレイヤーが、Red Light 
 
 ## ▶ Playable Build
 
-This repository includes a **fully playable single-player build**, made as a
-zero-dependency web game (HTML5 Canvas + ES modules), with three modes:
+This repository includes a **fully playable web game** (HTML5 Canvas + ES modules,
+zero dependencies) with single-player modes **and real-time online multiplayer**:
 
 - **Classic · Freeze Run** — cross the Station Front plaza to the gate while an AI Watcher hunts the crowd.
 - **Blend Task** — complete disguise objectives around the plaza, then reach the gate.
 - **Watcher · Spot the Human** — *you* watch the crowd from above; find the hidden Fakers and accuse them.
+- **Play Online** — a room-code lobby where friends play together: one human Watcher vs. human Fakers hidden in the NPC crowd.
+
+## 👥 Play with Friends (Online Multiplayer)
+
+Multiplayer runs on a **zero-dependency Node server** (no `npm install`, just Node 18+).
+
+**Host — start the server:**
+
+```bash
+node server/server.js          # Windows: node server\server.js
+```
+
+Open `http://localhost:8090`, click **PLAY ONLINE → Create Room**. You become the
+**Watcher**; share the 4-letter room code shown in the lobby.
+
+**Friends — join:** open the same address, **PLAY ONLINE → Join**, enter the code.
+They spawn as **Fakers** hidden in the NPC crowd. When everyone’s in, the host presses **Start Match**.
+
+Reaching your friends:
+
+- **Same Wi-Fi / LAN:** they open `http://<your-LAN-IP>:8090`.
+- **Over the internet:** expose the port with a tunnel and share the URL, e.g.
+  `cloudflared tunnel --url http://localhost:8090` or `ngrok http 8090`.
+- Change the port with `PORT=9000 node server/server.js`.
+
+The server is authoritative for the NPC crowd, the light cycle and accusations, and
+broadcasts human Fakers and NPCs as **one indistinguishable entity list** — the Watcher
+can’t tell players from NPCs by any metadata, only by reading body language.
 
 ### The core mechanic: don’t just stop — stop like an NPC
 
@@ -39,12 +67,14 @@ to read them.
 
 ### Run it
 
-No build step and no dependencies. Serve the folder over HTTP and open it:
+No build step and no dependencies. Two ways to serve it:
 
 ```bash
-# from the repository root
-python3 -m http.server 8000
-# then open http://localhost:8000 in a modern browser
+# Option A — the game server (also enables multiplayer). Needs Node 18+.
+node server/server.js            # open http://localhost:8090
+
+# Option B — any static server, for single-player only.
+python3 -m http.server 8000      # open http://localhost:8000
 ```
 
 (ES modules require `http://` — opening `index.html` via `file://` will not load the modules.)
@@ -113,7 +143,9 @@ src/game.js         modes + loop          src/suspicion.js    suspicion scoring
 src/input.js        keyboard / mouse      src/conformity.js   crowd-baseline freeze scoring
 src/audio.js        synthesized SFX       src/watcher.js      AI Watcher & accusation
 src/rng.js          seedable PRNG         src/ui.js           logo + DOM screens
-                                          src/store.js        settings persistence
+src/net.js          WebSocket client      src/store.js        settings persistence
+src/online.js       online match (client)
+server/server.js    rooms + authoritative match   server/wsserver.js   zero-dep HTTP+WebSocket
 ```
 
 This slice corresponds to Milestones 1–2 in the [Development Spec](docs/DEVELOPMENT_SPEC.md)
