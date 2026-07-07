@@ -1,0 +1,31 @@
+// Persisted settings (Steam Cloud stand-in: localStorage).
+const KEY = 'freezefaker.settings.v1';
+
+const DEFAULTS = {
+  lang: 'en',
+  volume: 0.7,
+  colorblind: false,
+  hudScale: 1,
+};
+
+export function loadSettings() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return { ...DEFAULTS, lang: guessLang() };
+    return { ...DEFAULTS, ...JSON.parse(raw) };
+  } catch {
+    return { ...DEFAULTS };
+  }
+}
+
+export function saveSettings(s) {
+  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* ignore quota / privacy mode */ }
+}
+
+// Best-effort language default from the browser, only on first ever run.
+export function guessLang() {
+  try {
+    const l = (navigator.language || 'en').toLowerCase();
+    return l.startsWith('ja') ? 'ja' : 'en';
+  } catch { return 'en'; }
+}
